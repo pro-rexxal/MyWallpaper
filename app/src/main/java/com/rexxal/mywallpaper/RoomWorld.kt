@@ -298,7 +298,7 @@ class RoomWorld {
                 b.y = land.y0; b.vy = 0f; b.vx = 0f; b.air = false; b.jumping = false; b.standOn = land.i; b.squashStart = now; b.tx = b.x; b.vxs = 0f
             }
             if (b.air && b.y >= GROUND) {
-                b.jumping = false; b.standOn = -1 b.y = GROUND; val hard = b.vy > 1.4f; b.vy = 0f; b.vx = 0f; b.air = false; b.squashStart = now; b.tx = b.x; if (hard) { say(listOf("Oof! 😵", "Ouch!", "Nailed it! 😎").random(), now, 1500); burst(P_DUST, b.x, GROUND, 8) } }
+                b.jumping = false; b.standOn = -1; b.y = GROUND; val hard = b.vy > 1.4f; b.vy = 0f; b.vx = 0f; b.air = false; b.squashStart = now; b.tx = b.x; if (hard) { say(listOf("Oof! 😵", "Ouch!", "Nailed it! 😎").random(), now, 1500); burst(P_DUST, b.x, GROUND, 8) } }
         }
         ball?.let { bl ->
             bl.vy += 2.6f * dt; bl.x += bl.vx * dt; bl.y += bl.vy * dt
