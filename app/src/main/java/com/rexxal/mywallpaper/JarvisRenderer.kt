@@ -54,7 +54,9 @@ class JarvisRenderer {
         for (k in 0 until 11) { cityH[k] = .35f + r.nextFloat() * .55f; for (j in 0 until 8) { cityLit[k][j] = r.nextFloat() < .5f; cityCol[k][j] = when { r.nextFloat() < .3f -> 0; r.nextFloat() < .5f -> 1; else -> 2 } } }
     }
 
-    fun trigger(kind: String, now: Long) { seqKind = kind; seqStart = now; seqStamp = Date(now) }
+    fun trigger(kind: String, now: Long) { seqKind = kind; seqStart = now; seqStamp = Date(now); shown = false; photo = null }
+    /** Clears the monitor back to "monitoring…" (old photo removed). */
+    fun clear() { if (seqKind == null) { shown = false; photo = null } }
     fun busy(now: Long) = seqKind != null && now - seqStart < END
 
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)

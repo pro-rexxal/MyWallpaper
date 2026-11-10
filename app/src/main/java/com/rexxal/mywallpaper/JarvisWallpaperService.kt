@@ -27,7 +27,6 @@ class JarvisWallpaperService : WallpaperService() {
             super.onCreate(surfaceHolder)
             prefs.registerOnSharedPreferenceChangeListener(this)
             JarvisSettings.apply(prefs, jr)
-            loadPhoto(prefs.getString("jv_photo", null))
         }
 
         override fun onDestroy() { prefs.unregisterOnSharedPreferenceChangeListener(this); handler.removeCallbacks(drawRunnable); super.onDestroy() }
@@ -43,7 +42,7 @@ class JarvisWallpaperService : WallpaperService() {
         override fun onSharedPreferenceChanged(p: SharedPreferences?, key: String?) {
             when (key) {
                 "jv_ev_time" -> { val kind = prefs.getString("jv_ev_kind", "wake") ?: "wake"; if (visible) jr.trigger(kind, System.currentTimeMillis()) else pending = kind }
-                "jv_photo_time" -> loadPhoto(prefs.getString("jv_photo", null))
+                "jv_photo_time" -> if (jr.busy(System.currentTimeMillis())) loadPhoto(prefs.getString("jv_photo", null))
                 else -> if (key?.startsWith("jv_") == true) JarvisSettings.apply(prefs, jr)
             }
             if (visible) drawFrame()
@@ -51,7 +50,7 @@ class JarvisWallpaperService : WallpaperService() {
 
         override fun onVisibilityChanged(v: Boolean) {
             visible = v
-            if (v) { pending?.let { jr.trigger(it, System.currentTimeMillis()) }; pending = null; drawFrame() } else handler.removeCallbacks(drawRunnable)
+            if (v) { val pk = pending; if (pk != null) jr.trigger(pk, System.currentTimeMillis()) else jr.clear(); pending = null; drawFrame() } else handler.removeCallbacks(drawRunnable)
         }
 
         override fun onSurfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) { super.onSurfaceChanged(holder, format, width, height); drawFrame() }
