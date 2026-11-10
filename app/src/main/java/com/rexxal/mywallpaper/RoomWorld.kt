@@ -296,6 +296,7 @@ class RoomWorld {
             b.vy += 4.2f * dt; b.y += b.vy * dt; b.x = (b.x + b.vx * dt).coerceIn(.06f, .94f); if (!b.jumping) b.vx *= .3f.pow(dt)
             if (b.vy > 0) boxes.firstOrNull { py <= it.y0 + .002f && b.y >= it.y0 && b.x >= it.x0 - .01f && b.x <= it.x1 + .01f }?.let { land ->
                 b.y = land.y0; b.vy = 0f; b.vx = 0f; b.air = false; b.jumping = false; b.standOn = land.i; b.squashStart = now; b.tx = b.x; b.vxs = 0f
+                b.nextAction = max(b.nextAction, now + 8000 + Random.nextLong(7000))
             }
             if (b.air && b.y >= GROUND) {
                 b.jumping = false; b.standOn = -1; b.y = GROUND; val hard = b.vy > 1.4f; b.vy = 0f; b.vx = 0f; b.air = false; b.squashStart = now; b.tx = b.x; if (hard) { say(listOf("Oof! 😵", "Ouch!", "Nailed it! 😎").random(), now, 1500); burst(P_DUST, b.x, GROUND, 8) } }
@@ -322,6 +323,7 @@ class RoomWorld {
             if (on == null || b.x < on.x0 - .01f || b.x > on.x1 + .01f) { b.air = true; b.vy = 0f; b.vx = b.vxs; b.standOn = -1; if (Random.nextBoolean()) say(listOf("Waaah! 😱", "Whoops!", "Uh oh…").random(), now, 1200) }
             else b.y = on.y0
         }
+        if (b.standOn >= 0 && b.action == "idle" && now < b.nextAction) b.goal = null
         if (b.standOn >= 0 && b.goal != null && !b.air) { b.air = true; b.vy = -.6f; b.vx = kotlin.math.sign(b.tx - b.x) * .35f; b.standOn = -1 }
         val tired = b.energy < .15f && !charging
         if (!b.air) {
@@ -330,12 +332,13 @@ class RoomWorld {
             b.vxs += (want - b.vxs) * min(1f, dt * 6); b.x += b.vxs * dt; if (abs(b.vxs) > .01f) b.facing = if (b.vxs > 0) 1f else -1f
         }
         // bump into icons in the way
-        if (!b.air) for (x in boxes) {
-            if (x.i == b.standOn) continue
-            if (x.y0 < b.y - .006f && x.y1 > b.y - botH && b.x + halfW > x.x0 && b.x - halfW < x.x1) {
+        // only icons at leg/body height, while walking toward them (icons above his head don't count)
+        if (!b.air && b.standOn < 0 && abs(b.vxs) > .01f) for (x in boxes) {
+            if (x.y0 < b.y - .006f && x.y0 > b.y - botH * .6f && b.x + halfW > x.x0 && b.x - halfW < x.x1 &&
+                (if (b.vxs > 0) x.x0 > b.x - halfW * .5f else x.x1 < b.x + halfW * .5f)) {
                 val left = abs(b.x - x.x0) < abs(b.x - x.x1); val v = b.vxs
                 b.x = if (left) x.x0 - halfW else x.x1 + halfW; b.vxs = -v * .3f; b.tx = b.x
-                if (b.y - x.y0 < .3f && Random.nextBoolean() && abs(v) > .03f) { jumpTo(x, now); say("Hup!", now, 900) }
+                if (b.y - x.y0 < .3f && Random.nextFloat() < .15f && abs(v) > .03f) { jumpTo(x, now); say("Hup!", now, 900) }
                 else if (now - lastBump > 1200 && abs(v) > .03f) { lastBump = now; b.squashStart = now; say(listOf("Oof! 🤕", "Bonk!", "Hey, an icon!").random(), now, 1200) }
                 break
             }
@@ -371,8 +374,8 @@ class RoomWorld {
             when {
                 !room -> { if (r < .6f) b.tx = (b.x + (Random.nextFloat() - .5f) * .5f).coerceIn(.18f, .82f) else if (r < .8f) setAction("dance", now, 3500) else b.waveUntil = now + 1400 }
                 tired -> goTo("pod", now, "So tired… 🪫")
-                b.standOn >= 0 && r < .45f -> { b.air = true; b.vy = -.7f; b.vx = (if (Random.nextBoolean()) -1 else 1) * .3f; b.standOn = -1; if (Random.nextFloat() < .3f) say("Wheee!", now, 1000) }
-                boxes.isNotEmpty() && r < .7f && boxes.any { it.i != b.standOn && it.y0 < b.y - .01f && b.y - it.y0 < .3f && abs((it.x0 + it.x1) / 2 - b.x) < .4f } -> {
+                b.standOn >= 0 && r < .35f -> { b.air = true; b.vy = -.7f; b.vx = (if (Random.nextBoolean()) -1 else 1) * .3f; b.standOn = -1; if (Random.nextFloat() < .3f) say("Wheee!", now, 1000) }
+                boxes.isNotEmpty() && b.standOn < 0 && Random.nextFloat() < .2f && boxes.any { it.i != b.standOn && it.y0 < b.y - .01f && b.y - it.y0 < .3f && abs((it.x0 + it.x1) / 2 - b.x) < .4f } -> {
                     val t = boxes.filter { it.i != b.standOn && it.y0 < b.y - .01f && b.y - it.y0 < .3f && abs((it.x0 + it.x1) / 2 - b.x) < .4f }.random()
                     jumpTo(t, now); if (Random.nextFloat() < .4f) say(listOf("Climbing! 🧗", "Up we go!", "Nice seat up there").random(), now, 1500)
                 }
@@ -728,13 +731,14 @@ class RoomWorld {
         val bob = when { b.sleeping -> 0f; dancing -> abs(sin(tm / 180f)) * -s * .12f; walking -> abs(sin(tm / 140f)) * -s * .04f; else -> 0f }
         val inPod = b.sleeping && abs(b.x - SPOT.getValue("pod")) < .03f
         val sitting = b.standOn >= 0 && !b.air && !walking && !b.sleeping && b.action != "dance"
-        val footY = b.y * h + bob - (if (inPod) s * .04f else 0f) + (if (sitting) s * .2f else 0f); val cx = b.x * w
+        val footY = b.y * h + bob - (if (inPod) s * .04f else 0f); val cx = b.x * w
         val eye = if (tired) 0xFFFFB703.toInt() else if (charging) mix(n1, 0xFF06D6A0.toInt(), .5f) else n1
-        val lift = if (b.standOn >= 0) 1f else ((GROUND - b.y) * 4).coerceIn(0f, 1f); p.color = a(Color.BLACK, .35f * (1 - lift * .7f)); oval(c, cx, GROUND * h + s * .02f, s * .42f * (1 - lift * .4f), s * .07f)
+        val lift = if (b.standOn >= 0) 0f else ((GROUND - b.y) * 4).coerceIn(0f, 1f); p.color = a(Color.BLACK, .35f * (1 - lift * .7f)); oval(c, cx, (if (b.standOn >= 0) b.y else GROUND) * h + s * .02f, s * .42f * (1 - lift * .4f), s * .07f)
         c.save(); c.translate(cx, footY)
         var tilt = when { walking -> b.lean + sin(tm / 140f) * 2; dancing -> sin(tm / 180f) * 14; b.carried -> sin(tm / 150f) * 12; tired -> -4f; else -> 0f }
         val spin = (now - b.spinStart) / 700f; if (spin in 0f..1f) tilt += easeInOut(spin) * 360 * b.facing
         c.rotate(tilt); c.scale(1 + squash - breathe * .5f, 1 - squash + breathe)
+        if (sitting) c.translate(0f, s * .1f)
         val hipY = -s * .2f
         sp.color = shade; sp.strokeWidth = s * .09f
         for (side in floatArrayOf(-1f, 1f)) {
@@ -742,7 +746,7 @@ class RoomWorld {
             if (walking) { val ph = sin(tm / 140f + (if (side > 0) PI.toFloat() else 0f)); lx += ph * s * .08f; ly = -max(0f, ph) * s * .06f }
             if (b.carried || b.air) { lx += sin(tm / 90f + side) * s * .05f; ly = -s * .02f }
             if (b.sleeping) { lx = side * s * .22f; ly = -s * .02f }
-            if (sitting) { lx = side * s * .17f; ly = s * .14f + sin(tm / 380f + side * 1.7f) * s * .04f }
+            if (sitting) { lx = side * s * .26f; ly = -s * .005f - max(0f, sin(tm / 600f + side * 1.7f)) * s * .025f }
             c.drawLine(side * s * .14f, hipY, lx, ly - s * .03f, sp); p.color = shade; oval(c, lx + side * s * .02f, ly - s * .02f, s * .09f, s * .045f)
         }
         val bodyTop = hipY - s * .46f
