@@ -119,6 +119,7 @@ class LivePage(private val a: MainActivity) {
         dreamBox.addView(Ui.choice(c, RoomWorld.DREAMS, -1) { preview.world.startEvent(RoomWorld.DREAMS[it], now()); preview.invalidate() }.view)
         room.addView(dreamBox)
         showMode(cfg.winMode)
+        Ui.slider(c, room, "Room height", 30, cfg.roomShift, { "$it" }) { cfg.roomShift = it; changed() }
         room.addView(Ui.label(c, "Neon theme"))
         room.addView(Ui.choice(c, RoomWorld.NEON_NAMES, cfg.neonTheme) { cfg.neonTheme = it; changed() }.view)
         val lights = Ui.toggle(c, room, "Room lights", cfg.lightsOn) { cfg.lightsOn = it; changed() }

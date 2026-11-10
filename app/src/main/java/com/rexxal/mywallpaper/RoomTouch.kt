@@ -18,7 +18,7 @@ class RoomTouch(private val world: RoomWorld) {
     /** x, y in pixels inside an area of w × h. Returns true when the touch was used. */
     fun onTouch(e: MotionEvent, x: Float, y: Float, w: Float, h: Float, cfg: LiveConfig): Boolean {
         if (!cfg.robot || w <= 0f || h <= 0f) return false
-        val nx = x / w; val ny = y / h; val now = System.currentTimeMillis()
+        val nx = x / w; val ny = y / h + (if (cfg.bgMode == 4) cfg.roomShift / 100f else 0f); val now = System.currentTimeMillis()
         val size = cfg.robotSize / 100f; val aspect = w / h
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> {

@@ -53,6 +53,7 @@ data class LiveConfig(
     var scene: Int = 3,
     var neonTheme: Int = 0,
     var lightsOn: Boolean = true,
+    var roomShift: Int = 12,      // % the room is moved up
     var liveWeather: String = "Clear"
 ) {
     val animated get() = bgMode == 1 || bgMode == 2 || bgMode == 4 || robot
@@ -69,7 +70,7 @@ data class LiveConfig(
             .putInt("lv_y", posY).putInt("lv_align", align)
             .putBoolean("lv_robot", robot).putInt("lv_rcol", robotColor).putInt("lv_rsize", robotSize)
             .putInt("lv_sleep", sleepSec).putInt("lv_win", winMode).putInt("lv_wsel", weatherSel).putString("lv_city", city)
-            .putInt("lv_scene", scene).putInt("lv_neon", neonTheme).putBoolean("lv_lights", lightsOn)
+            .putInt("lv_scene", scene).putInt("lv_neon", neonTheme).putBoolean("lv_lights", lightsOn).putInt("lv_shift", roomShift)
             .apply()
     }
 
@@ -89,7 +90,7 @@ data class LiveConfig(
             robotSize = p.getInt("lv_rsize", 18),
             sleepSec = p.getInt("lv_sleep", 25), winMode = p.getInt("lv_win", 0), weatherSel = p.getInt("lv_wsel", 0),
             city = p.getString("lv_city", "") ?: "", scene = p.getInt("lv_scene", 3), neonTheme = p.getInt("lv_neon", 0),
-            lightsOn = p.getBoolean("lv_lights", true), liveWeather = p.getString("wx_now", "Clear") ?: "Clear"
+            lightsOn = p.getBoolean("lv_lights", true), roomShift = p.getInt("lv_shift", 12), liveWeather = p.getString("wx_now", "Clear") ?: "Clear"
         )
     }
 }

@@ -60,6 +60,8 @@ class RoomWorld {
     var neon = NEON[0]
     var lightsOn = true
     var hourOverride: Float? = null
+    /** How far (0..1 of the height) the whole room is moved up. */
+    var shift = 0f
 
     // ---------------- robot ----------------
     inner class Bot {
@@ -115,6 +117,7 @@ class RoomWorld {
         weather = if (cfg.weatherSel <= 0) cfg.liveWeather else WEATHERS[(cfg.weatherSel - 1).coerceIn(0, WEATHERS.size - 1)]
         scene = SCENES[cfg.scene.coerceIn(0, SCENES.size - 1)]
         setNeon(cfg.neonTheme)
+        shift = cfg.roomShift / 100f
         if (lastCfgLights != cfg.lightsOn) { lightsOn = cfg.lightsOn; lastCfgLights = cfg.lightsOn }
     }
 
@@ -745,13 +748,22 @@ class RoomWorld {
     fun draw(c: Canvas, w: Float, h: Float, now: Long, cfg: LiveConfig, room: Boolean): () -> Unit {
         update(now, cfg.sleepSec * 1000L, room)
         var dark = 0f
-        if (room) { drawRoom(c, w, h, now); drawGadgets(c, w, h, now); dark = drawDarkness(c, w, h, now) }
+        val off = if (room) shift * h else 0f
+        if (room) {
+            vgrad(c, 0f, h - off - 2f, w, h, 0xFF0D0F18.toInt(), 0xFF07080E.toInt())   // floor continues below
+            c.save(); c.translate(0f, -off)
+            drawRoom(c, w, h, now); drawGadgets(c, w, h, now)
+            c.restore()
+            dark = drawDarkness(c, w, h, now)
+        }
         return {
+            c.save(); c.translate(0f, -off)
             val s = w * cfg.robotSize / 100f
             if (room) drawCable(c, w, h, now, s)
             if (cfg.robot) drawBot(c, w, h, now, cfg.robotColor, cfg.robotSize, dark)
             if (room) drawDrone(c, w, h, now)
             drawParts(c, w, h)
+            c.restore()
         }
     }
 
