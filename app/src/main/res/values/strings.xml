@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="live_desc">Your custom clock, date and animated background</string>
+    <string name="creator_desc">Your own design with animated time, date and text</string>
 </resources>

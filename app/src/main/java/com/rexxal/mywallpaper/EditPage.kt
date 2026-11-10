@@ -48,6 +48,7 @@ class EditPage(private val a: MainActivity) {
         listOf<Pair<String, () -> Unit>>(
             "📷  Photo" to { a.pickImage() },
             "✨  Use in Live" to { sendToLive() },
+            "🧩  Use in Creator" to { sendToCreator() },
             "💾  Save" to { saveToGallery() },
             "↺  Reset" to { reset() }
         ).forEach { (l, f) ->
@@ -165,6 +166,12 @@ class EditPage(private val a: MainActivity) {
     private fun setWallpaper(flags: Int, label: String) = renderFinal("Applying…") { out ->
         WallpaperManager.getInstance(c).setBitmap(out, null, true, flags)
         "Done! Set on $label ✓"
+    }
+
+    private fun sendToCreator() = renderFinal("Sending to Creator…") { out ->
+        a.creator.saveBackground(out)
+        a.runOnUiThread { a.showCreator() }
+        "Background set in Creator ✓"
     }
 
     private fun sendToLive() = renderFinal("Sending to Live…") { out ->

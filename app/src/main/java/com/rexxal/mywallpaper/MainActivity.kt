@@ -16,6 +16,8 @@ class MainActivity : Activity() {
     companion object {
         private const val REQ_PICK = 1
         private const val REQ_FOLDER = 2
+        private const val REQ_CREATOR_PHOTO = 3
+        private const val REQ_FONT = 4
     }
 
     var screenW = 1080
@@ -25,6 +27,7 @@ class MainActivity : Activity() {
     private lateinit var edit: EditPage
     private lateinit var auto: AutoPage
     private lateinit var live: LivePage
+    lateinit var creator: CreatorPage
     private lateinit var pages: List<View>
     private val tabs = mutableListOf<TextView>()
     private lateinit var subtitle: TextView
@@ -32,7 +35,8 @@ class MainActivity : Activity() {
         "Built-in wallpapers · new every tap",
         "Edit a photo and set it",
         "Change wallpaper automatically",
-        "Live clock & date wallpaper"
+        "Live clock & date wallpaper",
+        "Design your own lock & home screen"
     )
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -69,7 +73,8 @@ class MainActivity : Activity() {
         edit = EditPage(this)
         auto = AutoPage(this)
         live = LivePage(this)
-        pages = listOf(packs.view, edit.view, auto.view, live.view)
+        creator = CreatorPage(this)
+        pages = listOf(packs.view, edit.view, auto.view, live.view, creator.view)
         val content = FrameLayout(this).apply { setPadding(dp(16), 0, dp(16), dp(10)) }
         pages.forEach { content.addView(it, FrameLayout.LayoutParams(Ui.MATCH, Ui.MATCH)) }
         root.addView(content, LinearLayout.LayoutParams(Ui.MATCH, 0, 1f))
@@ -80,7 +85,7 @@ class MainActivity : Activity() {
             setBackgroundColor(Ui.SURFACE)
             setPadding(dp(12), dp(8), dp(12), dp(8))
         }
-        listOf("✨\nPacks", "🎨\nEdit", "🔄\nAuto", "🤖\nLive").forEachIndexed { i, label ->
+        listOf("✨\nPacks", "🎨\nEdit", "🔄\nAuto", "🤖\nLive", "🧩\nCreator").forEachIndexed { i, label ->
             val tv = TextView(this).apply {
                 text = label
                 gravity = Gravity.CENTER
@@ -109,6 +114,7 @@ class MainActivity : Activity() {
         }
         subtitle.text = subtitles[i]
         if (i == 3) live.refresh()
+        if (i == 4) creator.refresh()
     }
 
     fun toast(msg: String) = Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
@@ -135,6 +141,18 @@ class MainActivity : Activity() {
 
     fun onLivePhotoChanged() = live.reloadPhoto()
 
+    fun showCreator() = showTab(4)
+
+    fun pickCreatorPhoto() {
+        val open = Intent(Intent.ACTION_OPEN_DOCUMENT).apply { addCategory(Intent.CATEGORY_OPENABLE); type = "image/*" }
+        try { startActivityForResult(open, REQ_CREATOR_PHOTO) } catch (e: Exception) { toast("Photo picker not available") }
+    }
+
+    fun pickFont() {
+        val open = Intent(Intent.ACTION_OPEN_DOCUMENT).apply { addCategory(Intent.CATEGORY_OPENABLE); type = "*/*" }
+        try { startActivityForResult(open, REQ_FONT) } catch (e: Exception) { toast("File picker not available") }
+    }
+
     fun openInEditor(bmp: android.graphics.Bitmap) {
         edit.setBitmap(bmp)
         showTab(1)
@@ -148,6 +166,8 @@ class MainActivity : Activity() {
         when (requestCode) {
             REQ_PICK -> edit.setImage(uri)
             REQ_FOLDER -> auto.onFolderPicked(uri)
+            REQ_CREATOR_PHOTO -> creator.onPhotoPicked(uri)
+            REQ_FONT -> creator.onFontPicked(uri)
         }
     }
 }

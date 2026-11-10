@@ -50,5 +50,18 @@
                 android:name="android.service.wallpaper"
                 android:resource="@xml/live_wallpaper" />
         </service>
+
+        <service
+            android:name=".CreatorWallpaperService"
+            android:exported="true"
+            android:label="MyWallpaper Creator"
+            android:permission="android.permission.BIND_WALLPAPER">
+            <intent-filter>
+                <action android:name="android.service.wallpaper.WallpaperService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.wallpaper"
+                android:resource="@xml/creator_wallpaper" />
+        </service>
     </application>
 </manifest>
