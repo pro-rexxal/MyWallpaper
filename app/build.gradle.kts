@@ -34,4 +34,12 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+    androidResources {
+        noCompress += "tflite"
+    }
+}
+
+dependencies {
+    implementation("com.google.mlkit:face-detection:16.1.7")
+    implementation("org.tensorflow:tensorflow-lite:2.14.0")
 }

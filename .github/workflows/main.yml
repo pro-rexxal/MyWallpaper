@@ -19,6 +19,14 @@ jobs:
         with:
           gradle-version: "8.9"
 
+      - name: Download face model
+        run: |
+          mkdir -p app/src/main/assets
+          for b in main master; do
+            curl -fsSL -o app/src/main/assets/facenet.tflite "https://raw.githubusercontent.com/shubham0204/OnDevice-Face-Recognition-Android/$b/app/src/main/assets/facenet.tflite" && break
+          done
+          ls -la app/src/main/assets || true
+
       - name: Build APK
         run: gradle assembleDebug --no-daemon --stacktrace
 

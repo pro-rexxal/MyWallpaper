@@ -30,6 +30,7 @@ class JarvisPage(private val a: MainActivity) {
     private lateinit var preview: View
     private lateinit var status: TextView
     private lateinit var logList: LinearLayout
+    private lateinit var faceCount: TextView
 
     val view: LinearLayout = build()
 
@@ -53,6 +54,9 @@ class JarvisPage(private val a: MainActivity) {
         root.addView(preview, LinearLayout.LayoutParams(Ui.MATCH, Ui.previewHeight(c, false)))
         val row = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
         row.addView(Ui.pill(c, "🚨 Wrong PIN") { jr.trigger("intruder", System.currentTimeMillis()) }, LinearLayout.LayoutParams(Ui.WRAP, Ui.WRAP).apply { rightMargin = dp(6) })
+        for ((label, k) in listOf("🙂 It's you" to "owner", "🤨 Stranger" to "stranger", "🌑 No face" to "noface"))
+            row.addView(Ui.pill(c, label) { val now = System.currentTimeMillis(); jr.trigger("check", now); preview.postDelayed({ jr.resolve(k, if (k == "owner") 94 else if (k == "stranger") 21 else 0) }, 2500) },
+                LinearLayout.LayoutParams(Ui.WRAP, Ui.WRAP).apply { rightMargin = dp(6) })
         row.addView(Ui.previewToggle(c, preview))
         root.addView(android.widget.HorizontalScrollView(c).apply { isHorizontalScrollBarEnabled = false; addView(row); setPadding(0, dp(6), 0, 0) })
 
@@ -74,6 +78,8 @@ class JarvisPage(private val a: MainActivity) {
         step("4. Battery: no restrictions") { Ui.openBatterySettings(a) }
         su.addView(Ui.button(c, "5. Start Jarvis", true) { startService() }, LinearLayout.LayoutParams(Ui.MATCH, Ui.WRAP).apply { topMargin = dp(8) })
         su.addView(Ui.button(c, "Set Jarvis as live wallpaper", true) { setLive() }, LinearLayout.LayoutParams(Ui.MATCH, Ui.WRAP).apply { topMargin = dp(8) })
+        su.addView(Ui.button(c, "🔕 Hide notification", false) { hideNotification() }, LinearLayout.LayoutParams(Ui.MATCH, Ui.WRAP).apply { topMargin = dp(8) })
+        su.addView(Ui.text(c, "Switch the notification off on the next screen. Jarvis keeps working.", 12f, Ui.MUTED).apply { setPadding(0, dp(4), 0, 0) })
         su.addView(Ui.button(c, "Stop Jarvis", false) { c.stopService(Intent(c, JarvisService::class.java)); refreshStatus() }, LinearLayout.LayoutParams(Ui.MATCH, Ui.WRAP).apply { topMargin = dp(8) })
         su.addView(Ui.text(c, "After restarting your phone, open this app once and tap Start Jarvis again (Android requires it for the camera).", 12f, Ui.MUTED).apply { setPadding(0, dp(8), 0, 0) })
         col.addView(su)
@@ -81,8 +87,25 @@ class JarvisPage(private val a: MainActivity) {
         // ---- when ----
         col.addView(Ui.section(c, "When"))
         val wh = Ui.card(c)
-        wh.addView(Ui.text(c, "Jarvis takes a photo every time someone enters a wrong PIN, pattern or password, no matter how many times. Nothing else triggers the camera.", 13f, Ui.MUTED))
+        wh.addView(Ui.text(c, "Wrong PIN, pattern or password: always a photo, every attempt.", 13f, Ui.MUTED))
+        Ui.toggle(c, wh, "Face check when the phone is opened", p.getBoolean("jv_face_on", false)) { on ->
+            p.edit().putBoolean("jv_face_on", on).apply()
+            if (on && FaceMatcher.owners(c).isEmpty()) a.toast("Add your face first (in \"Your face\")")
+        }
+        wh.addView(Ui.text(c, "On: every time the lock screen turns on he checks your face. You → \"Hi sir\" and the photo is deleted. Someone else → \"Who are you?\" and the photo is saved. Off: only wrong PIN photos.", 12f, Ui.MUTED))
         col.addView(wh)
+
+        // ---- your face ----
+        col.addView(Ui.section(c, "Your face"))
+        val fc = Ui.card(c)
+        faceCount = Ui.text(c, "", 14f, Ui.TEXT, true); fc.addView(faceCount)
+        fc.addView(Ui.text(c, "Add 3–5 photos: straight, slightly left, slightly right, with and without glasses, in good light.", 12f, Ui.MUTED).apply { setPadding(0, dp(4), 0, 0) })
+        fc.addView(Ui.button(c, "📸 Take a photo of me now", true) { enrollNow() }, LinearLayout.LayoutParams(Ui.MATCH, Ui.WRAP).apply { topMargin = dp(10) })
+        fc.addView(Ui.button(c, "🖼 Choose a selfie", false) { a.pickSelfie() }, LinearLayout.LayoutParams(Ui.MATCH, Ui.WRAP).apply { topMargin = dp(8) })
+        fc.addView(Ui.button(c, "Remove my face", false) { confirm("Remove all saved face data?") { FaceMatcher.clearOwners(c); refreshFaces() } }, LinearLayout.LayoutParams(Ui.MATCH, Ui.WRAP).apply { topMargin = dp(8) })
+        fc.addView(Ui.text(c, "Face matching runs only on this phone. It's for fun, not security: it can be wrong in the dark or at odd angles.", 12f, Ui.MUTED).apply { setPadding(0, dp(8), 0, 0) })
+        col.addView(fc)
+        refreshFaces()
 
         // ---- look ----
         col.addView(Ui.section(c, "Look"))
@@ -91,6 +114,9 @@ class JarvisPage(private val a: MainActivity) {
         lk.addView(Ui.choice(c, JarvisRenderer.ACCENT_NAMES, p.getInt("jv_accent", 0)) { p.edit().putInt("jv_accent", it).apply(); JarvisSettings.apply(p, jr) }.view)
         lk.addView(Ui.label(c, "Body color"))
         lk.addView(Ui.colors(c, p.getInt("jv_body", 0xFFE9ECF5.toInt())) { col2 -> p.edit().putInt("jv_body", if (col2 == 0xFF111318.toInt()) 0xFF2A2E3E.toInt() else col2).apply(); JarvisSettings.apply(p, jr) })
+        for ((label, key, def) in listOf(Triple("When it's you", "jv_msg_owner", jr.msgOwner), Triple("When it's someone else", "jv_msg_stranger", jr.msgStranger), Triple("When he can't see a face", "jv_msg_noface", jr.msgNoFace))) {
+            lk.addView(Ui.label(c, label)); lk.addView(input(def) { p.edit().putString(key, it).apply(); JarvisSettings.apply(p, jr) })
+        }
         lk.addView(Ui.label(c, "What he says after a wrong PIN"))
         lk.addView(input(jr.msgIntruder) { p.edit().putString("jv_msg_intr", it).apply(); JarvisSettings.apply(p, jr) })
         col.addView(lk)
@@ -147,6 +173,45 @@ class JarvisPage(private val a: MainActivity) {
         view.postDelayed({ refreshStatus() }, 600)
     }
 
+    private fun refreshFaces() {
+        val n = FaceMatcher.owners(c).size
+        faceCount.text = if (n == 0) "No face added yet" else "✓ $n photo${if (n > 1) "s" else ""} of you saved"
+    }
+
+    private fun addFace(bmp: android.graphics.Bitmap?) {
+        val f = if (bmp == null) null else FaceMatcher.fingerprint(c, bmp)
+        a.runOnUiThread {
+            if (f == null) a.toast("No face found. Try again with more light, looking at the screen.")
+            else { FaceMatcher.addOwner(c, f); refreshFaces(); a.toast("Face added ✓") }
+        }
+    }
+
+    private fun enrollNow() {
+        if (c.checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) { a.toast("Allow the camera first (Setup → step 1)"); return }
+        a.toast("Look at the screen… 3, 2, 1")
+        view.postDelayed({
+            JarvisCamera.capture(c, "owner_setup") { file ->
+                if (file == null) { a.toast("Camera didn't respond, try again"); return@capture }
+                Thread { val bmp = try { ImageLoader.load(c, Uri.fromFile(file), 720, 960, 2_000_000L) } catch (e: Throwable) { null }; file.delete(); addFace(bmp) }.start()
+            }
+        }, 1800)
+    }
+
+    fun onSelfie(uri: Uri) {
+        Thread { val bmp = try { ImageLoader.load(c, uri, 720, 960, 2_000_000L) } catch (e: Throwable) { null }; addFace(bmp) }.start()
+    }
+
+    private fun hideNotification() {
+        try {
+            if (Build.VERSION.SDK_INT >= 26) a.startActivity(Intent(android.provider.Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
+                .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, c.packageName).putExtra(android.provider.Settings.EXTRA_CHANNEL_ID, JarvisService.CH))
+            else Ui.openBatterySettings(a)
+            a.toast("Turn this notification off")
+        } catch (e: Exception) {
+            try { a.startActivity(Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, c.packageName)) } catch (e2: Exception) { }
+        }
+    }
+
     private fun setLive() {
         try {
             a.startActivity(Intent(WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER).putExtra(WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT, ComponentName(c, JarvisWallpaperService::class.java)))
@@ -158,7 +223,7 @@ class JarvisPage(private val a: MainActivity) {
 
     private fun refreshLog() {
         logList.removeAllViews()
-        val files = JarvisCamera.logDir(c).listFiles()?.filter { it.extension == "jpg" }?.sortedByDescending { it.lastModified() } ?: emptyList()
+        val files = JarvisCamera.logDir(c).listFiles()?.filter { it.extension == "jpg" && !it.name.contains("_check") && !it.name.contains("_owner") }?.sortedByDescending { it.lastModified() } ?: emptyList()
         if (files.isEmpty()) { logList.addView(Ui.text(c, "No photos yet. They'll appear here.", 13f, Ui.MUTED)); return }
         val fmt = SimpleDateFormat("EEE d MMM · h:mm a", Locale.getDefault())
         files.take(60).forEach { f ->
@@ -168,7 +233,7 @@ class JarvisPage(private val a: MainActivity) {
             row.addView(img, LinearLayout.LayoutParams(dp(56), dp(72)))
             val intr = f.name.contains("intruder")
             val info = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(12), 0, 0, 0) }
-            info.addView(Ui.text(c, if (intr) "🚨 Wrong PIN" else "🔓 Lock screen", 14f, if (intr) 0xFFFF5A5F.toInt() else Ui.TEXT, true))
+            info.addView(Ui.text(c, when { intr -> "🚨 Wrong PIN"; f.name.contains("stranger") -> "🤨 Not you"; f.name.contains("noface") -> "🌑 No face seen"; else -> "🔓 Lock screen" }, 14f, if (intr || f.name.contains("stranger")) 0xFFFF5A5F.toInt() else Ui.TEXT, true))
             info.addView(Ui.text(c, fmt.format(Date(f.name.substringBefore("_").toLongOrNull() ?: f.lastModified())), 12f, Ui.MUTED))
             row.addView(info, LinearLayout.LayoutParams(0, Ui.WRAP, 1f))
             row.addView(Ui.pill(c, "🗑") { confirm("Delete this photo?") { f.delete(); refreshLog() } })

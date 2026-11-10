@@ -43,6 +43,7 @@ class JarvisWallpaperService : WallpaperService() {
             when (key) {
                 "jv_ev_time" -> { val kind = prefs.getString("jv_ev_kind", "wake") ?: "wake"; if (visible) jr.trigger(kind, System.currentTimeMillis()) else pending = kind }
                 "jv_photo_time" -> if (jr.busy(System.currentTimeMillis())) loadPhoto(prefs.getString("jv_photo", null))
+                "jv_res_time" -> jr.resolve(prefs.getString("jv_res_kind", "noface") ?: "noface", prefs.getInt("jv_res_score", 0))
                 else -> if (key?.startsWith("jv_") == true) JarvisSettings.apply(prefs, jr)
             }
             if (visible) drawFrame()
@@ -76,5 +77,8 @@ object JarvisSettings {
         jr.body = p.getInt("jv_body", 0xFFE9ECF5.toInt())
         jr.msgWake = p.getString("jv_msg_wake", null) ?: jr.msgWake
         jr.msgIntruder = p.getString("jv_msg_intr", null) ?: jr.msgIntruder
+        jr.msgOwner = p.getString("jv_msg_owner", null) ?: jr.msgOwner
+        jr.msgStranger = p.getString("jv_msg_stranger", null) ?: jr.msgStranger
+        jr.msgNoFace = p.getString("jv_msg_noface", null) ?: jr.msgNoFace
     }
 }

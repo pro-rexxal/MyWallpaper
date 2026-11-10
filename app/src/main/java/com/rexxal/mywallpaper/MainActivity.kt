@@ -18,6 +18,7 @@ class MainActivity : Activity() {
         private const val REQ_FOLDER = 2
         private const val REQ_CREATOR_PHOTO = 3
         private const val REQ_FONT = 4
+        private const val REQ_SELFIE = 5
     }
 
     var screenW = 1080
@@ -152,6 +153,11 @@ class MainActivity : Activity() {
         try { startActivityForResult(open, REQ_CREATOR_PHOTO) } catch (e: Exception) { toast("Photo picker not available") }
     }
 
+    fun pickSelfie() {
+        val open = Intent(Intent.ACTION_OPEN_DOCUMENT).apply { addCategory(Intent.CATEGORY_OPENABLE); type = "image/*" }
+        try { startActivityForResult(open, REQ_SELFIE) } catch (e: Exception) { toast("Photo picker not available") }
+    }
+
     fun pickFont() {
         val open = Intent(Intent.ACTION_OPEN_DOCUMENT).apply { addCategory(Intent.CATEGORY_OPENABLE); type = "*/*" }
         try { startActivityForResult(open, REQ_FONT) } catch (e: Exception) { toast("File picker not available") }
@@ -182,6 +188,7 @@ class MainActivity : Activity() {
             REQ_FOLDER -> auto.onFolderPicked(uri)
             REQ_CREATOR_PHOTO -> creator.onPhotoPicked(uri)
             REQ_FONT -> creator.onFontPicked(uri)
+            REQ_SELFIE -> jarvis.onSelfie(uri)
         }
     }
 }

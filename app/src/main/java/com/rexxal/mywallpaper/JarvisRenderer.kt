@@ -36,6 +36,11 @@ class JarvisRenderer {
     var body = 0xFFE9ECF5.toInt()
     var msgWake = "Gotcha 😎 I saved your picture."
     var msgIntruder = "Intruder saved. The owner will see this 😈"
+    var msgOwner = "Hi sir 👋 Welcome back."
+    var msgStranger = "Who are you?! 🤨 I've saved your face."
+    var msgNoFace = "I can't see you… turn on a light? 🔦"
+    private var score = 0
+    private var lastNow = 0L
     var photo: Bitmap? = null
 
     private var seqKind: String? = null
@@ -53,6 +58,9 @@ class JarvisRenderer {
         val r = java.util.Random(4)
         for (k in 0 until 11) { cityH[k] = .35f + r.nextFloat() * .55f; for (j in 0 until 8) { cityLit[k][j] = r.nextFloat() < .5f; cityCol[k][j] = when { r.nextFloat() < .3f -> 0; r.nextFloat() < .5f -> 1; else -> 2 } } }
     }
+
+    /** Face check finished: "owner", "stranger" or "noface". */
+    fun resolve(kind: String, sc: Int) { if (seqKind == "check") { seqKind = kind; score = sc } }
 
     fun trigger(kind: String, now: Long) { seqKind = kind; seqStart = now; seqStamp = Date(now); shown = false; photo = null }
     /** Clears the monitor back to "monitoring…" (old photo removed). */
@@ -80,11 +88,16 @@ class JarvisRenderer {
     fun draw(c: Canvas, w: Float, h: Float, now: Long) {
         val t = AnimClock.ms(now)
         val A = accent
+        // while the face check is still running, hold the "matching" part of the animation
+        if (seqKind == "check" && now - seqStart > DONE - 400) seqStart += (now - lastNow).coerceIn(0L, 200L)
+        lastNow = now
         var kind = seqKind
         val st = if (kind != null) now - seqStart else Long.MAX_VALUE / 4
         if (kind != null && st >= DONE) { shown = true; lastStamp = seqStamp; lastKind = kind }
         if (kind != null && st > END) { seqKind = null; kind = null }
-        val intr = kind == "intruder"
+        val face = kind == "check" || kind == "owner" || kind == "stranger" || kind == "noface"
+        val intr = kind == "intruder" || (kind == "stranger" && st >= DONE)
+        val GOOD = 0xFF39FF9E.toInt()
         fun ph(x: Long, y: Long) = ((st - x).toFloat() / (y - x)).coerceIn(0f, 1f)
         val alert = if (intr && st < END) (sin(t / 140f) + 1) / 2 else 0f
         val BACK = .71f
@@ -146,9 +159,9 @@ class JarvisRenderer {
             }
         }
         fun redAlert(mw: Float, mh: Float, label: String) { p.color = a(0xFFFF3B5C.toInt(), .2f + .3f * alert); c.drawRect(-mw / 2, -mh / 2, mw / 2, mh / 2, p); text(c, label, 0f, mh * .05f, mw * .1f, 0xFFFF3B5C.toInt(), bold) }
-        mon(.05f, .3f, .29f, .46f, .1f) { mw, mh -> if (alert > 0) redAlert(mw, mh, "⚠ INTRUDER") else codeScreen(mw, mh, A, 70f, 11) }
+        mon(.05f, .3f, .29f, .46f, .1f) { mw, mh -> if (alert > 0) redAlert(mw, mh, if (kind == "stranger") "⚠ UNKNOWN" else "⚠ INTRUDER") else codeScreen(mw, mh, A, 70f, 11) }
         mon(.71f, .3f, .95f, .46f, -.1f) { mw, mh ->
-            if (alert > 0) redAlert(mw, mh, "WRONG PIN") else {
+            if (alert > 0) redAlert(mw, mh, if (kind == "stranger") "NOT OWNER" else "WRONG PIN") else {
                 sp.color = a(0xFF39FF9E.toInt(), .85f); sp.strokeWidth = mw * .01f
                 for (L in 0..1) { path.reset(); for (k in 0..40) { val x = -mw / 2 + mw * k / 40; val y = (if (L == 1) mh * .2f else -mh * .1f) + sin(k * .5f + t / (250f + L * 120)) * mh * .12f * sin(k * .2f + t / 700f); if (k == 0) path.moveTo(x, y) else path.lineTo(x, y) }; c.drawPath(path, sp) }
                 text(c, "NET  " + (40 + (30 * sin(t / 500f)).toInt()) + " Mb/s", -mw * .45f, -mh * .36f, mw * .05f, a(0xFF39FF9E.toInt(), .8f), mono, Paint.Align.LEFT)
@@ -158,7 +171,8 @@ class JarvisRenderer {
             val fs = mw * .045f; val lx = -mw / 2 + mw * .05f
             if (kind != null && st >= TYPE && st < DONE) {
                 val file = "capture_" + SimpleDateFormat("HHmmss", Locale.US).format(seqStamp) + ".jpg"
-                val lines = listOf("$ cd ~/jarvis/log", "$ sudo upload --secure $file", "> connecting to vault…", "> encrypting…")
+                val lines = if (face) listOf("$ cd ~/jarvis/face", "$ face_match --owner $file", "> detecting face…", if (kind == "noface") "> no face in frame" else "> comparing with owner…")
+                    else listOf("$ cd ~/jarvis/log", "$ sudo upload --secure $file", "> connecting to vault…", "> encrypting…")
                 val typed = ((st - TYPE) / 38).toInt(); var used = 0
                 lines.forEachIndexed { i, ln ->
                     val n = (typed - used).coerceIn(0, ln.length); used += ln.length + 6
@@ -167,11 +181,21 @@ class JarvisRenderer {
                 }
                 if (st >= UPLOAD) {
                     val pp = ph(UPLOAD, DONE - 150)
-                    text(c, "UPLOADING " + (pp * 100).toInt() + "%", lx, mh * .08f, fs, A, mono, Paint.Align.LEFT)
+                    text(c, (if (face) "MATCHING " else "UPLOADING ") + (pp * 100).toInt() + "%", lx, mh * .08f, fs, A, mono, Paint.Align.LEFT)
                     sp.color = a(A, .6f); sp.strokeWidth = 2f; c.drawRect(lx, mh * .14f, lx + mw * .9f, mh * .23f, sp)
                     p.color = A; c.drawRect(lx, mh * .14f, lx + mw * .9f * pp, mh * .23f, p)
                 }
-            } else if (shown) {
+            } else if (shown && face && kind != null && kind != "check") {
+                val res = when (kind) { "owner" -> Triple("MATCH ✓", "$score% · OWNER", GOOD); "stranger" -> Triple("NO MATCH ✗", "$score% · UNKNOWN", 0xFFFF3B5C.toInt()); else -> Triple("NO FACE", "FOUND", 0xFFFFB84D.toInt()) }
+                val im = photo
+                val iw: Float; val ih: Float
+                if (im != null && kind != "noface") { val s2 = min(mh * .84f / im.height, mw * .4f / im.width); iw = im.width * s2; ih = im.height * s2; r.set(-mw * .44f, -ih / 2, -mw * .44f + iw, ih / 2); c.drawBitmap(im, null, r, bmpP) }
+                else { iw = mw * .32f; ih = mh * .8f; p.color = 0xFF05060C.toInt(); c.drawRect(-mw * .44f, -ih / 2, -mw * .44f + iw, ih / 2, p); text(c, "?", -mw * .44f + iw / 2, mh * .05f, mw * .12f, 0xFF2A2F45.toInt(), bold) }
+                sp.color = res.third; sp.strokeWidth = 2f; c.drawRect(-mw * .44f, -ih / 2, -mw * .44f + iw, ih / 2, sp)
+                text(c, res.first, mw * .03f, -mh * .18f, mw * .065f, res.third, mono, Paint.Align.LEFT)
+                text(c, res.second, mw * .03f, 0f, mw * .048f, res.third, mono, Paint.Align.LEFT)
+                text(c, when (kind) { "owner" -> "photo deleted"; "stranger" -> "saved to log"; else -> "too dark?" }, mw * .03f, mh * .2f, mw * .04f, 0xFF9AA3C0.toInt(), mono, Paint.Align.LEFT)
+            } else if (shown && !face) {
                 val red = lastKind == "intruder"; val col = if (red) 0xFFFF3B5C.toInt() else A
                 val im = photo
                 val iw: Float; val ih: Float
@@ -221,7 +245,7 @@ class JarvisRenderer {
         if (now > nextLook) { lookTx = (Math.random() * 2 - 1).toFloat(); lookTy = (Math.random() * 1.2 - .2).toFloat(); nextLook = now + 1200 + (Math.random() * 2200).toLong() }
         var lx = lookTx; var ly = lookTy; var eyeScale = 1f; var mood = "idle"
         if (kind == null && sin(t / 3000f) > .3f) { lx = .55f; ly = .9f; mood = "phone" }
-        if (kind != null) { if (st < FLASH + 200) { lx = 0f; ly = 0f; eyeScale = if (st < RAISE) 1 + .35f * sin(ph(0, RAISE) * PI.toFloat()) else 1.08f; mood = "focus" } else if (st >= TALK) { lx = 0f; ly = .1f; mood = if (intr) "evil" else "happy" } }
+        if (kind != null) { if (st < FLASH + 200) { lx = 0f; ly = 0f; eyeScale = if (st < RAISE) 1 + .35f * sin(ph(0, RAISE) * PI.toFloat()) else 1.08f; mood = "focus" } else if (st >= TALK) { lx = 0f; ly = .1f; mood = if (intr) "evil" else if (kind == "noface") "squint" else "happy" } }
         lookX += (lx - lookX) * .15f; lookY += (ly - lookY) * .15f
         // chair base
         p.color = 0xFF0C0E17.toInt(); c.drawRect(cx - w * .008f, cy + S * .35f, cx + w * .008f, cy + S * .7f, p)
@@ -261,7 +285,9 @@ class JarvisRenderer {
             val raise = if (kind == null) 0f else when { st < RAISE -> 0f; st < AIM -> ease(ph(RAISE, AIM)); st < TURN1 -> 1f; else -> 1 - ease(ph(TURN1, TURN1 + 400)) }
             val idleX = cx + S * .28f * sx; val idleY = bodyY + S * .02f + (if (mood == "phone") sin(t / 600f) * S * .02f else 0f)
             val aimX = cx + S * .18f * sx; val aimY = hy + S * .12f
-            val hRx = idleX + (aimX - idleX) * raise; val hRy = idleY + (aimY - idleY) * raise
+            var hRx = idleX + (aimX - idleX) * raise; var hRy = idleY + (aimY - idleY) * raise
+            val waving = kind == "owner" && st >= TALK && st < TALK + 2600
+            if (waving) { hRx = cx + S * .62f + sin(t / 110f) * S * .1f; hRy = hy - S * .15f }
             arm(shL[0], shL[1], cx - S * .58f * sx, bodyY + S * .24f, -S * .12f)
             // head
             c.save(); c.translate(cx, 0f); c.scale(sx, 1f)
@@ -277,6 +303,7 @@ class JarvisRenderer {
             for (sd in floatArrayOf(-1f, 1f)) {
                 val ex = sd * S * .22f; val ey = hy - S * .03f; val er = S * .17f * eyeScale
                 if (mood == "happy") { sp.color = A; sp.strokeWidth = S * .05f; r.set(ex - er * .6f, ey + er * .25f - er * .6f, ex + er * .6f, ey + er * .25f + er * .6f); c.drawArc(r, 207f, 126f, false, sp); continue }
+                if (mood == "squint") { oval(c, ex, ey, er, er * .32f, 0xFFF4F7FF.toInt()); circle(c, ex + sin(t / 300f) * er * .3f, ey, er * .28f, A); continue }
                 oval(c, ex, ey, er, er * blink, 0xFFF4F7FF.toInt())
                 if (blink > .3f) { val px = ex + lookX * er * .38f; val py = ey + lookY * er * .38f
                     circle(c, px, py, er * .55f, if (mood == "evil") 0xFFFF3B5C.toInt() else A); circle(c, px, py, er * .3f, 0xFF05060C.toInt())
@@ -292,7 +319,7 @@ class JarvisRenderer {
             c.restore()
             arm(shR[0], shR[1], hRx, hRy, S * .14f * (1 - raise))
             val pw = S * (.2f + .08f * raise)
-            if (raise > .5f) phone(hRx, hRy - pw * .6f, pw, back = true, scroll = false) else phone(hRx - S * .02f, hRy - pw * .5f, pw, back = false, scroll = true)
+            if (waving) { } else if (raise > .5f) phone(hRx, hRy - pw * .6f, pw, back = true, scroll = false) else phone(hRx - S * .02f, hRy - pw * .5f, pw, back = false, scroll = true)
             if (kind != null && st in AIM until FLASH) { val n = 3 - min(2L, (st - AIM) / ((FLASH - AIM) / 3)); text(c, n.toString(), hRx, hRy - pw * 1.6f, S * .28f, if (intr) 0xFFFF3B5C.toInt() else A, bold) }
             if (kind != null && st < RAISE + 200) text(c, "!", cx + S * .78f, hy - S * .45f - sin(ph(0, RAISE) * PI.toFloat()) * S * .1f, S * .3f, if (intr) 0xFFFF3B5C.toInt() else 0xFFFFD166.toInt(), bold)
         } else {
@@ -313,7 +340,10 @@ class JarvisRenderer {
         // effects
         if (alert > 0) { p.color = a(0xFFFF2846.toInt(), .12f * alert); c.drawRect(0f, 0f, w, h, p) }
         if (kind != null && st in FLASH until FLASH + 350) { val f = 1 - ph(FLASH, FLASH + 350); p.color = a(Color.WHITE, .92f * f); c.drawRect(0f, 0f, w, h, p); text(c, "CLICK!", w * .5f, h * .9f, w * .08f, a(0xFF0B0E1A.toInt(), f), bold) }
-        val say = if (kind == null) null else when { st < AIM -> if (intr) "Wrong PIN! Smile 📸" else "Hey! Hold still 📸"; st in TALK until END -> if (intr) msgIntruder else msgWake; else -> null }
+        val say = if (kind == null) null else when {
+            st < AIM -> if (kind == "intruder") "Wrong PIN! Smile 📸" else if (face) "Let me check who you are… 🔍" else "Hey! Hold still 📸"
+            st in TALK until END -> when (kind) { "intruder" -> msgIntruder; "owner" -> msgOwner; "stranger" -> msgStranger; "noface" -> msgNoFace; else -> msgWake }
+            else -> null }
         if (say != null) {
             tp.textSize = w * .04f; tp.typeface = bold; val tw = tp.measureText(say); val pad = w * .03f; val bw = min(w * .92f, tw + pad * 2); val bh = w * .04f + pad * 1.4f
             val bx = (cx - bw / 2).coerceIn(w * .04f, w * .96f - bw); val by = hy - S * .6f - bh
