@@ -24,9 +24,6 @@ class JarvisService : Service() {
     }
     private var busy = false
 
-    private val screen = object : BroadcastReceiver() {
-        override fun onReceive(c: Context, i: Intent) { if (i.action == Intent.ACTION_SCREEN_ON) event("wake") }
-    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -37,39 +34,33 @@ class JarvisService : Service() {
         if (Build.VERSION.SDK_INT >= 26) nm.createNotificationChannel(NotificationChannel(CH, "Jarvis", NotificationManager.IMPORTANCE_MIN))
         val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
         val n = (if (Build.VERSION.SDK_INT >= 26) Notification.Builder(this, CH) else @Suppress("DEPRECATION") Notification.Builder(this))
-            .setContentTitle("Jarvis is watching 👀").setContentText("Front camera ready for the lock screen")
+            .setContentTitle("Jarvis is watching 👀").setContentText("Takes a photo on every wrong PIN")
             .setSmallIcon(android.R.drawable.ic_menu_camera).setOngoing(true).setContentIntent(open).build()
         if (Build.VERSION.SDK_INT >= 29) startForeground(7, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA) else startForeground(7, n)
-        val f = IntentFilter(Intent.ACTION_SCREEN_ON)
-        if (Build.VERSION.SDK_INT >= 33) registerReceiver(screen, f, Context.RECEIVER_NOT_EXPORTED) else registerReceiver(screen, f)
         Ui.prefs(this).edit().putBoolean("jv_running", true).apply()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY
 
     override fun onDestroy() {
-        try { unregisterReceiver(screen) } catch (e: Exception) { }
         instance = null
         Ui.prefs(this).edit().putBoolean("jv_running", false).apply()
         super.onDestroy()
     }
 
-    /** "wake" = lock screen turned on (rate-limited), "intruder" = wrong PIN. */
+    private var queued = 0
+
+    /** Only wrong PIN/pattern attempts take a photo: every attempt, none skipped. */
     fun event(kind: String) {
-        val p = Ui.prefs(this); val now = System.currentTimeMillis()
-        if (kind == "wake") {
-            if (!p.getBoolean("jv_on_wake", true)) return
-            val km = getSystemService(android.app.KeyguardManager::class.java)
-            if (!km.isKeyguardLocked) return
-            if (now - p.getLong("jv_last_wake", 0L) < p.getInt("jv_gap_min", 10) * 60_000L) return
-            p.edit().putLong("jv_last_wake", now).apply()
-        } else if (!p.getBoolean("jv_on_intruder", true)) return
-        if (busy) return
+        if (kind != "intruder") return
+        val p = Ui.prefs(this)
+        if (busy) { queued++; return }          // another wrong attempt while the camera is busy: take it right after
         busy = true
-        p.edit().putString("jv_ev_kind", kind).putLong("jv_ev_time", now).apply()   // the wallpaper starts its animation
+        p.edit().putString("jv_ev_kind", kind).putLong("jv_ev_time", System.currentTimeMillis()).apply()   // the wallpaper starts its animation
         JarvisCamera.capture(this, kind) { f ->
             busy = false
             if (f != null) p.edit().putString("jv_photo", f.path).putLong("jv_photo_time", System.currentTimeMillis()).apply()
+            if (queued > 0) { queued--; event("intruder") }
         }
     }
 }

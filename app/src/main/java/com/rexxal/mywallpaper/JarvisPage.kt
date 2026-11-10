@@ -52,7 +52,6 @@ class JarvisPage(private val a: MainActivity) {
         preview = Preview()
         root.addView(preview, LinearLayout.LayoutParams(Ui.MATCH, Ui.previewHeight(c, false)))
         val row = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
-        row.addView(Ui.pill(c, "🔓 Lock screen wake") { jr.trigger("wake", System.currentTimeMillis()) }, LinearLayout.LayoutParams(Ui.WRAP, Ui.WRAP).apply { rightMargin = dp(6) })
         row.addView(Ui.pill(c, "🚨 Wrong PIN") { jr.trigger("intruder", System.currentTimeMillis()) }, LinearLayout.LayoutParams(Ui.WRAP, Ui.WRAP).apply { rightMargin = dp(6) })
         row.addView(Ui.previewToggle(c, preview))
         root.addView(android.widget.HorizontalScrollView(c).apply { isHorizontalScrollBarEnabled = false; addView(row); setPadding(0, dp(6), 0, 0) })
@@ -82,9 +81,7 @@ class JarvisPage(private val a: MainActivity) {
         // ---- when ----
         col.addView(Ui.section(c, "When"))
         val wh = Ui.card(c)
-        Ui.toggle(c, wh, "Photo when someone enters a wrong PIN", p.getBoolean("jv_on_intruder", true)) { p.edit().putBoolean("jv_on_intruder", it).apply() }
-        Ui.toggle(c, wh, "Photo when the lock screen turns on", p.getBoolean("jv_on_wake", true)) { p.edit().putBoolean("jv_on_wake", it).apply() }
-        Ui.slider(c, wh, "At most every", 59, p.getInt("jv_gap_min", 10) - 1, { "${it + 1} min" }) { p.edit().putInt("jv_gap_min", it + 1).apply() }
+        wh.addView(Ui.text(c, "Jarvis takes a photo every time someone enters a wrong PIN, pattern or password, no matter how many times. Nothing else triggers the camera.", 13f, Ui.MUTED))
         col.addView(wh)
 
         // ---- look ----
@@ -94,8 +91,6 @@ class JarvisPage(private val a: MainActivity) {
         lk.addView(Ui.choice(c, JarvisRenderer.ACCENT_NAMES, p.getInt("jv_accent", 0)) { p.edit().putInt("jv_accent", it).apply(); JarvisSettings.apply(p, jr) }.view)
         lk.addView(Ui.label(c, "Body color"))
         lk.addView(Ui.colors(c, p.getInt("jv_body", 0xFFE9ECF5.toInt())) { col2 -> p.edit().putInt("jv_body", if (col2 == 0xFF111318.toInt()) 0xFF2A2E3E.toInt() else col2).apply(); JarvisSettings.apply(p, jr) })
-        lk.addView(Ui.label(c, "What he says after a lock screen photo"))
-        lk.addView(input(jr.msgWake) { p.edit().putString("jv_msg_wake", it).apply(); JarvisSettings.apply(p, jr) })
         lk.addView(Ui.label(c, "What he says after a wrong PIN"))
         lk.addView(input(jr.msgIntruder) { p.edit().putString("jv_msg_intr", it).apply(); JarvisSettings.apply(p, jr) })
         col.addView(lk)
