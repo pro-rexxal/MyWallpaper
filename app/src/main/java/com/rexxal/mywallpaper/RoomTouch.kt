@@ -74,7 +74,7 @@ class BatteryReader(private val c: Context) {
                 if (lv >= 0 && sc > 0) level = (lv.toFloat() / sc).coerceIn(0.01f, 1f)
                 val plugged = i.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0)
                 val status = i.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
-                charging = plugged != 0 || status == BatteryManager.STATUS_CHARGING || status == BatteryManager.STATUS_FULL
+                charging = plugged != 0 || status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL
             }
         } catch (e: Exception) { }
         return true
