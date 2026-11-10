@@ -47,7 +47,7 @@ object JarvisCamera {
                 ?: return finish(null)
             val ch = cm.getCameraCharacteristics(id)
             val sizes = ch.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)?.getOutputSizes(ImageFormat.JPEG) ?: return finish(null)
-            val size = sizes.minByOrNull { abs(it.width * it.height - 1_300_000) } ?: sizes[0]
+            val size = sizes.minByOrNull { abs(it.width * it.height - 900_000) } ?: sizes[0]
             val orient = ch.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 270
             val rd = ImageReader.newInstance(size.width, size.height, ImageFormat.JPEG, 2); reader = rd
             val st = SurfaceTexture(false).apply { setDefaultBufferSize(640, 480) }; tex = st
@@ -69,17 +69,27 @@ object JarvisCamera {
                         d.createCaptureSession(listOf(preview, rd.surface), object : CameraCaptureSession.StateCallback() {
                             override fun onConfigured(s: CameraCaptureSession) {
                                 try {
-                                    // let auto-exposure settle for a moment, then take the still
-                                    val pr = d.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply { addTarget(preview) }
-                                    s.setRepeatingRequest(pr.build(), null, h)
-                                    h.postDelayed({
+                                    // shoot the moment auto-exposure is ready (max ~280 ms), before anyone can react or cover the camera
+                                    var shot = false
+                                    fun shoot() {
+                                        if (shot) return; shot = true
                                         try {
                                             val still = d.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE).apply {
-                                                addTarget(rd.surface); set(CaptureRequest.JPEG_ORIENTATION, orient); set(CaptureRequest.JPEG_QUALITY, 88.toByte())
+                                                addTarget(rd.surface); set(CaptureRequest.JPEG_ORIENTATION, orient); set(CaptureRequest.JPEG_QUALITY, 85.toByte())
                                             }
                                             s.capture(still.build(), null, h)
                                         } catch (e: Exception) { finish(null) }
-                                    }, 700)
+                                    }
+                                    val pr = d.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply { addTarget(preview); set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON) }
+                                    var frames = 0
+                                    s.setRepeatingRequest(pr.build(), object : CameraCaptureSession.CaptureCallback() {
+                                        override fun onCaptureCompleted(ss: CameraCaptureSession, rq: CaptureRequest, res: android.hardware.camera2.TotalCaptureResult) {
+                                            frames++
+                                            val ae = res.get(android.hardware.camera2.CaptureResult.CONTROL_AE_STATE)
+                                            if (frames >= 2 && (ae == null || ae == android.hardware.camera2.CaptureResult.CONTROL_AE_STATE_CONVERGED || ae == android.hardware.camera2.CaptureResult.CONTROL_AE_STATE_FLASH_REQUIRED || ae == android.hardware.camera2.CaptureResult.CONTROL_AE_STATE_LOCKED)) shoot()
+                                        }
+                                    }, h)
+                                    h.postDelayed({ shoot() }, 280)
                                 } catch (e: Exception) { finish(null) }
                             }
                             override fun onConfigureFailed(s: CameraCaptureSession) = finish(null)

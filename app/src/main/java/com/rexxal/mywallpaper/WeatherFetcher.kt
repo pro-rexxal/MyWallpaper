@@ -44,7 +44,7 @@ object WeatherFetcher {
                 val code = wx.getJSONObject("current").getInt("weather_code")
                 val w = codeToWeather(code)
                 p.edit().putString("wx_now", w).putLong("wx_time", System.currentTimeMillis()).putString("wx_for", city)
-                    .putString("wx_place", r.optString("name", city)).apply()
+                    .putString("wx_place", r.optString("name", city)).putFloat("wx_lat", lat.toFloat()).putFloat("wx_lon", lon.toFloat()).apply()
                 done?.invoke("${r.optString("name", city)}: $w")
             } catch (e: Exception) {
                 done?.invoke(if (e.message == "City not found") "City not found" else "No internet right now")

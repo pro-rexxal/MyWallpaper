@@ -46,6 +46,11 @@ class JarvisPage(private val a: MainActivity) {
             cv.save(); cv.clipPath(clip); cv.translate(frame.left, frame.top); jr.draw(cv, frame.width(), frame.height(), System.currentTimeMillis()); cv.restore()
             if (isShown) postInvalidateOnAnimation()
         }
+        override fun onTouchEvent(e: android.view.MotionEvent): Boolean {
+            if (e.actionMasked == android.view.MotionEvent.ACTION_DOWN && frame.contains(e.x, e.y))
+                jr.tap((e.x - frame.left) / frame.width(), (e.y - frame.top) / frame.height(), System.currentTimeMillis(), frame.width(), frame.height())
+            return true
+        }
     }
 
     private fun build(): LinearLayout {
@@ -57,6 +62,7 @@ class JarvisPage(private val a: MainActivity) {
         for ((label, k) in listOf("🙂 It's you" to "owner", "🤨 Stranger" to "stranger", "🌑 No face" to "noface"))
             row.addView(Ui.pill(c, label) { val now = System.currentTimeMillis(); jr.trigger("check", now); preview.postDelayed({ jr.resolve(k, if (k == "owner") 94 else if (k == "stranger") 21 else 0) }, 2500) },
                 LinearLayout.LayoutParams(Ui.WRAP, Ui.WRAP).apply { rightMargin = dp(6) })
+        row.addView(Ui.pill(c, "👀 Unlocking") { jr.attention(System.currentTimeMillis(), true) }, LinearLayout.LayoutParams(Ui.WRAP, Ui.WRAP).apply { rightMargin = dp(6) })
         row.addView(Ui.previewToggle(c, preview))
         root.addView(android.widget.HorizontalScrollView(c).apply { isHorizontalScrollBarEnabled = false; addView(row); setPadding(0, dp(6), 0, 0) })
 
@@ -110,6 +116,9 @@ class JarvisPage(private val a: MainActivity) {
         // ---- look ----
         col.addView(Ui.section(c, "Look"))
         val lk = Ui.card(c)
+        lk.addView(Ui.label(c, "Room theme"))
+        lk.addView(Ui.choice(c, listOf("🌑 Dark", "☀ Light"), if (p.getBoolean("jv_light", false)) 1 else 0) { p.edit().putBoolean("jv_light", it == 1).apply(); JarvisSettings.apply(p, jr) }.view)
+        lk.addView(Ui.text(c, "The window shows the real sky: time of day, sun, moon phase and live weather. It uses the city set in Robot → Weather.", 12f, Ui.MUTED).apply { setPadding(0, Ui.dp(c, 6), 0, 0) })
         lk.addView(Ui.label(c, "Glow color"))
         lk.addView(Ui.choice(c, JarvisRenderer.ACCENT_NAMES, p.getInt("jv_accent", 0)) { p.edit().putInt("jv_accent", it).apply(); JarvisSettings.apply(p, jr) }.view)
         lk.addView(Ui.label(c, "Body color"))

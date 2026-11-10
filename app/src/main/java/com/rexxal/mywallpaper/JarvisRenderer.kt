@@ -26,8 +26,14 @@ class JarvisRenderer {
         val ACCENT_NAMES = listOf("Cyan", "Green", "Purple", "Pink", "Amber")
         val ACCENTS = intArrayOf(0xFF3EE8FF.toInt(), 0xFF39FF9E.toInt(), 0xFFB48CFF.toInt(), 0xFFFF5CC8.toInt(), 0xFFFFB84D.toInt())
         // timeline (ms after the trigger)
-        const val NOTICE = 0L; const val RAISE = 600L; const val AIM = 1200L; const val FLASH = 1900L; const val TURN1 = 2200L
-        const val TYPE = 2900L; const val UPLOAD = 4300L; const val DONE = 5600L; const val TURN2 = 6000L; const val TALK = 6700L; const val END = 10500L
+        // the photo is taken the instant it triggers; the quick grab + flash is only the animation
+        const val NOTICE = 0L; const val RAISE = 0L; const val AIM = 170L; const val FLASH = 200L; const val TURN1 = 1500L
+        const val TYPE = 2200L; const val UPLOAD = 3500L; const val DONE = 4800L; const val TURN2 = 5200L; const val TALK = 5900L; const val END = 9700L
+        private val POKES = listOf("Yes? What do you need? 🤖", "I'm busy hacking, make it quick 😤", "Hey! That tickles 😆", "Need something, boss?", "Don't poke the genius 🧠", "I'm watching the lock screen for you 👀", "Coffee break? Not now ☕")
+        // x0, y0, x1, y1, line
+        private val SPOTS = listOf(floatArrayOf(.27f, .24f, .73f, .47f) to "Hands off my main screen! 🖥", floatArrayOf(.05f, .3f, .29f, .46f) to "That's classified code 🤫",
+            floatArrayOf(.71f, .3f, .95f, .46f) to "Network looks clean 📡", floatArrayOf(.8f, .63f, .96f, .83f) to "Careful, that's my baby 💻", floatArrayOf(.02f, .03f, .48f, .28f) to "Nice view, right? 🌆",
+            floatArrayOf(.12f, .55f, .18f, .6f) to "My coffee! ☕", floatArrayOf(.72f, .04f, .92f, .14f) to "Root access. Always 😎")
         private val CMDS = listOf("nmap -sV", "ssh root@", "grep -r key", "./exploit", "ping 10.0", "cat /etc/")
         private val PROMPTS = listOf("$ ", "> ", "# ")
     }
@@ -51,6 +57,34 @@ class JarvisRenderer {
     private var lastKind = "wake"
     private var lookX = 0f; private var lookY = 0f; private var lookTx = 0f; private var lookTy = 0f; private var nextLook = 0L
     private var blinkAt = 0L; private var nextBlink = 0L
+    // room theme + real outdoor world
+    var light = false
+    var weather = "Clear"
+    var lat = 22f; var lon = java.util.TimeZone.getDefault().getOffset(System.currentTimeMillis()) / 3_600_000f * 15f
+    // touches + attention
+    private var tapX = 0f; private var tapY = 0f; private var tapAt = 0L
+    private val ripples = ArrayList<FloatArray>()   // x, y, time(as float offset)
+    private val rippleT = ArrayList<Long>()
+    private val taps = ArrayList<Long>()
+    private var pokeLine: String? = null; private var pokeMood = "idle"; private var pokeAt = 0L; private var pokeN = 0; private var bumpAt = 0L
+    private var attentionUntil = 0L; private var attentionAt = 0L
+    // outdoor events
+    private var evKind: String? = null; private var evStart = 0L; private var evNext = 0L; private var evY = .2f; private var evDir = 1
+
+    /** Someone woke the locked phone: lean in and watch the keypad. */
+    fun attention(now: Long, on: Boolean) { if (on) { attentionAt = now; attentionUntil = now + 9000 } else attentionUntil = 0L }
+
+    /** A tap on the home screen (normalised 0..1). */
+    fun tap(nx: Float, ny: Float, now: Long, w: Float, h: Float) {
+        tapX = nx; tapY = ny; tapAt = now; ripples.add(floatArrayOf(nx, ny)); rippleT.add(now)
+        if (seqKind != null && now - seqStart < END) return
+        taps.removeAll { now - it > 1500 }; taps.add(now)
+        if (taps.size >= 4) { poke("Okay okay, I see you! Stop tapping 😤", "evil", now); taps.clear(); return }
+        val S = .3f * w / h
+        if (abs(nx - .5f) < .2f && ny > .73f - 1.07f * S && ny < .73f + .45f * S) { poke(POKES[pokeN++ % POKES.size], "happy", now); bumpAt = now; return }
+        SPOTS.firstOrNull { (r, _) -> nx >= r[0] && nx <= r[2] && ny >= r[1] && ny <= r[3] }?.let { poke(it.second, "idle", now) }
+    }
+    private fun poke(line: String, mood: String, now: Long) { pokeLine = line; pokeMood = mood; pokeAt = now }
 
     // fixed random city skyline
     private val cityH = FloatArray(11); private val cityLit = Array(11) { BooleanArray(8) }; private val cityCol = Array(11) { IntArray(8) }
@@ -83,6 +117,8 @@ class JarvisRenderer {
     private fun oval(c: Canvas, cx: Float, cy: Float, rx: Float, ry: Float, col: Int) { p.shader = null; p.color = col; r.set(cx - rx, cy - ry, cx + rx, cy + ry); c.drawOval(r, p) }
     private fun text(c: Canvas, s: String, x: Float, y: Float, size: Float, col: Int, tf: android.graphics.Typeface? = null, align: Paint.Align = Paint.Align.CENTER) {
         tp.textSize = size; tp.color = col; tp.typeface = tf; tp.textAlign = align; c.drawText(s, x, y, tp) }
+    private fun pal(dark: Long, lite: Long) = (if (light) lite else dark).toInt()
+    private fun mix(a: Int, b: Int, k: Float): Int { val q = k.coerceIn(0f, 1f); return Color.rgb((Color.red(a) + (Color.red(b) - Color.red(a)) * q).toInt(), (Color.green(a) + (Color.green(b) - Color.green(a)) * q).toInt(), (Color.blue(a) + (Color.blue(b) - Color.blue(a)) * q).toInt()) }
     private fun ease(x: Float) = if (x < .5f) 2 * x * x else 1 - (-2 * x + 2).pow(2) / 2
 
     fun draw(c: Canvas, w: Float, h: Float, now: Long) {
@@ -103,29 +139,12 @@ class JarvisRenderer {
         val BACK = .71f
 
         // ===== room =====
-        p.shader = LinearGradient(0f, 0f, 0f, h * BACK, 0xFF0A0C16.toInt(), 0xFF121628.toInt(), Shader.TileMode.CLAMP); c.drawRect(0f, 0f, w, h * BACK, p); p.shader = null
-        sp.color = a(Color.WHITE, .03f); sp.strokeWidth = 1f; for (k in 1 until 7) c.drawLine(w * k / 7, 0f, w * k / 7, h * BACK, sp)
+        p.shader = LinearGradient(0f, 0f, 0f, h * BACK, pal(0xFF0A0C16, 0xFFF1F2F6), pal(0xFF121628, 0xFFDFE3EC), Shader.TileMode.CLAMP); c.drawRect(0f, 0f, w, h * BACK, p); p.shader = null
+        sp.color = if (light) a(Color.BLACK, .05f) else a(Color.WHITE, .03f); sp.strokeWidth = 1f; for (k in 1 until 7) c.drawLine(w * k / 7, 0f, w * k / 7, h * BACK, sp)
         p.shader = LinearGradient(0f, 0f, 0f, h * .12f, a(A, .25f), a(A, 0f), Shader.TileMode.CLAMP); c.drawRect(0f, 0f, w, h * .12f, p); p.shader = null
-        // window + city + blinds
-        val WX = w * .05f; val WY = h * .07f; val WW = w * .38f; val WH = h * .17f
-        rr(c, WX - w * .012f, WY - w * .012f, WW + w * .024f, WH + w * .024f, w * .012f, 0xFF05060B.toInt())
-        c.save(); c.clipRect(WX, WY, WX + WW, WY + WH)
-        p.shader = LinearGradient(0f, WY, 0f, WY + WH, 0xFF120A2E.toInt(), 0xFF3B1A4A.toInt(), Shader.TileMode.CLAMP); c.drawRect(WX, WY, WX + WW, WY + WH, p); p.shader = null
-        for (k in 0 until 11) {
-            val bx = WX + WW * k / 11; val bw = WW / 11 * .85f; val bh = WH * cityH[k]
-            p.color = 0xFF0B0A1C.toInt(); c.drawRect(bx, WY + WH - bh, bx + bw, WY + WH, p)
-            for (j in 0 until 8) if (cityLit[k][j]) {
-                p.color = a(when (cityCol[k][j]) { 0 -> 0xFFFF5CC8.toInt(); 1 -> A; else -> 0xFFFFD68C.toInt() }, .6f + .4f * sin(t / 900f + k + j))
-                val lx = bx + bw * .2f + (j % 2) * bw * .4f; val ly = WY + WH - bh + bh * .08f + (j / 2) * bh * .18f; c.drawRect(lx, ly, lx + bw * .18f, ly + bh * .06f, p)
-            }
-        }
-        p.color = a(0xFFFF5CC8.toInt(), .15f); c.drawRect(WX, WY, WX + WW, WY + WH, p)
-        c.restore()
-        p.color = a(0xFF0A0C16.toInt(), .82f); for (k in 0 until 9) c.drawRect(WX, WY + k * WH / 9, WX + WW, WY + k * WH / 9 + WH / 9 * .55f, p)
-        p.color = a(0xFFFF5CC8.toInt(), .08f)
-        for (k in 0 until 5) { path.reset(); path.moveTo(WX + WW, WY + k * WH / 5); path.lineTo(WX + WW + w * .35f, WY + h * .12f + k * WH / 5); path.lineTo(WX + WW + w * .35f, WY + h * .12f + k * WH / 5 + WH / 12); path.lineTo(WX + WW, WY + k * WH / 5 + WH / 10); path.close(); c.drawPath(path, p) }
+        drawWindow(c, w, h, t, now)
         // shelf + LED
-        rr(c, w * .56f, h * .17f, w * .38f, h * .008f, 2f, 0xFF22273D.toInt()); p.color = a(A, .9f); c.drawRect(w * .56f, h * .178f, w * .94f, h * .178f + 2, p)
+        rr(c, w * .56f, h * .17f, w * .38f, h * .008f, 2f, pal(0xFF22273D, 0xFFC3C9D6)); p.color = a(A, .9f); c.drawRect(w * .56f, h * .178f, w * .94f, h * .178f + 2, p)
         p.shader = LinearGradient(0f, h * .178f, 0f, h * .24f, a(A, .25f), a(A, 0f), Shader.TileMode.CLAMP); c.drawRect(w * .56f, h * .178f, w * .94f, h * .24f, p); p.shader = null
         rr(c, w * .58f, h * .135f, w * .05f, h * .035f, 3f, 0xFFFF5A5F.toInt()); rr(c, w * .65f, h * .125f, w * .025f, h * .045f, 3f, 0xFFFFD166.toInt())
         p.color = 0xFF9B6BFF.toInt(); path.reset(); path.moveTo(w * .73f, h * .17f); path.lineTo(w * .75f, h * .13f); path.lineTo(w * .77f, h * .17f); path.close(); c.drawPath(path, p)
@@ -134,13 +153,15 @@ class JarvisRenderer {
         rr(c, w * .72f, h * .04f, w * .2f, h * .1f, 4f, 0xFF0D1120.toInt()); sp.color = a(0xFF39FF9E.toInt(), .7f); sp.strokeWidth = 1.5f; c.drawRect(w * .725f, h * .044f, w * .915f, h * .136f, sp)
         text(c, "ROOT", w * .82f, h * .08f, w * .024f, 0xFF39FF9E.toInt(), mono); text(c, "ACCESS", w * .82f, h * .105f, w * .024f, 0xFF39FF9E.toInt(), mono)
         // router
-        rr(c, w * .47f, h * .11f, w * .07f, h * .02f, 3f, 0xFF1D2236.toInt())
+        c.save(); c.translate(w * .12f, -h * .035f)
+        rr(c, w * .47f, h * .11f, w * .07f, h * .02f, 3f, pal(0xFF1D2236, 0xFFB9C0CF))
         for (k in 0 until 4) { p.color = if (sin(t / (90f + k * 40) + k) > 0) 0xFF39FF9E.toInt() else 0xFF16341F.toInt(); c.drawRect(w * (.478f + k * .014f), h * .117f, w * (.485f + k * .014f), h * .121f, p) }
-        sp.color = 0xFF1D2236.toInt(); sp.strokeWidth = w * .004f; c.drawLine(w * .48f, h * .11f, w * .47f, h * .08f, sp); c.drawLine(w * .53f, h * .11f, w * .545f, h * .08f, sp)
+        sp.color = pal(0xFF1D2236, 0xFFB9C0CF); sp.strokeWidth = w * .004f; c.drawLine(w * .48f, h * .11f, w * .47f, h * .08f, sp); c.drawLine(w * .53f, h * .11f, w * .545f, h * .08f, sp)
+        c.restore()
 
         // ===== desk + monitors =====
         val DESK = .6f
-        p.color = 0xFF1D2236.toInt(); c.drawRect(w * .495f, h * .25f, w * .505f, h * DESK, p)
+        p.color = pal(0xFF1D2236, 0xFFB9C0CF); c.drawRect(w * .495f, h * .25f, w * .505f, h * DESK, p)
         fun mon(x0: Float, y0: Float, x1: Float, y1: Float, skew: Float, content: (Float, Float) -> Unit) {
             c.save(); c.translate((x0 + x1) / 2 * w, (y0 + y1) / 2 * h); c.skew(0f, skew)
             val mw = (x1 - x0) * w; val mh = (y1 - y0) * h
@@ -213,17 +234,21 @@ class JarvisRenderer {
                 text(c, "monitoring lock screen…", 0f, mh * .14f, mw * .045f, a(A, .55f + .45f * sin(t / 400f)), mono)
             }
         }
-        p.shader = LinearGradient(0f, h * DESK, 0f, h * (DESK + .03f), 0xFF262B44.toInt(), 0xFF171B2C.toInt(), Shader.TileMode.CLAMP); c.drawRect(w * .03f, h * DESK, w * .97f, h * (DESK + .03f), p); p.shader = null
+        p.shader = LinearGradient(0f, h * DESK, 0f, h * (DESK + .03f), pal(0xFF262B44, 0xFFD9C2A0), pal(0xFF171B2C, 0xFFBBA17D), Shader.TileMode.CLAMP); c.drawRect(w * .03f, h * DESK, w * .97f, h * (DESK + .03f), p); p.shader = null
         p.color = a(A, .8f); c.drawRect(w * .03f, h * (DESK + .03f) - 2, w * .97f, h * (DESK + .03f), p)
-        p.color = 0xFF141827.toInt(); c.drawRect(w * .06f, h * (DESK + .03f), w * .09f, h * BACK, p); c.drawRect(w * .91f, h * (DESK + .03f), w * .94f, h * BACK, p)
+        p.color = pal(0xFF141827, 0xFF9C8261); c.drawRect(w * .06f, h * (DESK + .03f), w * .09f, h * BACK, p); c.drawRect(w * .91f, h * (DESK + .03f), w * .94f, h * BACK, p)
         rr(c, w * .33f, h * (DESK - .012f), w * .34f, h * .016f, w * .008f, 0xFF1B2034.toInt())
         for (k in 0 until 14) { p.color = a(if (k % 4 != 0) A else 0xFFFF6EC7.toInt(), .3f + .25f * sin(t / 260f + k)); c.drawRect(w * (.345f + k * .022f), h * (DESK - .008f), w * (.361f + k * .022f), h * DESK, p) }
         rr(c, w * .71f, h * (DESK - .01f), w * .035f, h * .012f, w * .01f, 0xFF1B2034.toInt())
-        rr(c, w * .12f, h * (DESK - .035f), w * .06f, h * .035f, w * .01f, 0xFF2A2F48.toInt())
-        for (k in 0..1) { val pp = ((t / 1200f) + k / 2f) % 1f; circle(c, w * (.15f + sin(pp * 6) * .01f), h * (DESK - .04f - pp * .04f), w * .01f * (1 + pp), a(Color.WHITE, .22f * (1 - pp))) }
+        rr(c, w * .12f, h * (DESK - .035f), w * .06f, h * .035f, w * .01f, pal(0xFF2A2F48, 0xFFFFFFFF))
+        for (k in 0..1) { val pp = ((t / 1200f) + k / 2f) % 1f; circle(c, w * (.15f + sin(pp * 6) * .01f), h * (DESK - .04f - pp * .04f), w * .01f * (1 + pp), a(if (light) 0xFF6E7387.toInt() else Color.WHITE, .22f * (1 - pp))) }
+        // floor + rug + glow
+        p.shader = LinearGradient(0f, h * BACK, 0f, h, pal(0xFF0F1220, 0xFFD6DBE4), pal(0xFF06070D, 0xFFC2C8D4), Shader.TileMode.CLAMP); c.drawRect(0f, h * BACK, w, h, p); p.shader = null
+        oval(c, w * .5f, h * .86f, w * .46f, h * .07f, pal(0xFF161A2E, 0xFFB8C0D0)); sp.color = a(A, .25f); sp.strokeWidth = 2f; r.set(w * .08f, h * .802f, w * .92f, h * .918f); c.drawOval(r, sp)
+
         // PC tower with RGB fans
-        val TX = w * .8f; val TY = h * .6f; val TW = w * .16f; val TH = h * .2f
-        rr(c, TX, TY, TW, TH, w * .01f, 0xFF11141F.toInt())
+        val TX = w * .8f; val TY = h * .63f; val TW = w * .16f; val TH = h * .2f
+        oval(c, TX + TW / 2, TY + TH, TW * .6f, h * .008f, a(Color.BLACK, .25f)); rr(c, TX, TY, TW, TH, w * .01f, pal(0xFF11141F, 0xFFE6E9F0))
         for (k in 0..2) {
             val fx = TX + TW * .5f; val fy = TY + TH * (.2f + k * .3f); val fr = TW * .28f; val col = Color.HSVToColor(floatArrayOf((t / 20f + k * 80) % 360f, .85f, 1f))
             sp.color = col; sp.strokeWidth = w * .006f; c.drawCircle(fx, fy, fr, sp)
@@ -231,29 +256,32 @@ class JarvisRenderer {
             for (b in 0 until 5) { c.rotate(72f); r.set(0f, -fr * .16f, fr * .9f, fr * .16f); c.drawOval(r, p) }
             c.restore()
         }
-        sp.color = 0xFF0C0E17.toInt(); sp.strokeWidth = w * .008f
+        sp.color = pal(0xFF0C0E17, 0xFF8C93A6); sp.strokeWidth = w * .008f
         path.reset(); path.moveTo(TX, TY + TH * .2f); path.quadTo(w * .72f, h * .7f, w * .6f, h * (DESK + .03f)); c.drawPath(path, sp)
-        // floor + rug + glow
-        p.shader = LinearGradient(0f, h * BACK, 0f, h, 0xFF0F1220.toInt(), 0xFF06070D.toInt(), Shader.TileMode.CLAMP); c.drawRect(0f, h * BACK, w, h, p); p.shader = null
-        oval(c, w * .5f, h * .86f, w * .46f, h * .07f, 0xFF161A2E.toInt()); sp.color = a(A, .25f); sp.strokeWidth = 2f; r.set(w * .08f, h * .802f, w * .92f, h * .918f); c.drawOval(r, sp)
-
         // ===== Jarvis in his chair =====
         var turn = 0f
         if (kind != null) turn = when { st in TURN1 until TYPE -> ease(ph(TURN1, TYPE)); st in TYPE until TURN2 -> 1f; st in TURN2 until TALK -> 1 - ease(ph(TURN2, TALK)); else -> 0f }
         val facingBack = turn > .5f; val sx = max(.05f, abs(cos(turn * PI.toFloat())))
-        val cx = w * .5f; val S = w * .3f; val cy = h * .73f + sin(t / 700f) * S * .015f; val B = body; val shade = darker(B, .82f)
+        val cx = w * .5f; val S = w * .3f; val pinOn = kind == null && now < attentionUntil
+        val bumpA = max(0f, 1 - (now - bumpAt) / 400f)
+        val cy = h * .73f + sin(t / 700f) * S * .015f - sin(bumpA * PI.toFloat()) * S * .08f + (if (pinOn) S * .04f else 0f); val B = body; val shade = darker(B, .82f)
         if (now > nextLook) { lookTx = (Math.random() * 2 - 1).toFloat(); lookTy = (Math.random() * 1.2 - .2).toFloat(); nextLook = now + 1200 + (Math.random() * 2200).toLong() }
         var lx = lookTx; var ly = lookTy; var eyeScale = 1f; var mood = "idle"
         if (kind == null && sin(t / 3000f) > .3f) { lx = .55f; ly = .9f; mood = "phone" }
-        if (kind != null) { if (st < FLASH + 200) { lx = 0f; ly = 0f; eyeScale = if (st < RAISE) 1 + .35f * sin(ph(0, RAISE) * PI.toFloat()) else 1.08f; mood = "focus" } else if (st >= TALK) { lx = 0f; ly = .1f; mood = if (intr) "evil" else if (kind == "noface") "squint" else "happy" } }
+        val tAge = now - tapAt; val hyy = cy - S * .62f
+        val poking = kind == null && pokeLine != null && now - pokeAt < 2600
+        if (kind == null && tAge < 1800) { lx = ((tapX * w - cx) / (S * 1.1f)).coerceIn(-1f, 1f); ly = ((tapY * h - hyy) / (S * 1.1f)).coerceIn(-1f, 1f); mood = "idle"; if (tAge < 220) eyeScale = 1.12f }
+        if (poking) mood = pokeMood
+        if (pinOn) { lx = sin(t / 380f) * .45f; ly = 1f; eyeScale = 1.15f + .08f * max(0f, sin(t / 160f)); mood = "focus" }
+        if (kind != null) { if (st < FLASH + 200) { lx = 0f; ly = 0f; eyeScale = 1.2f; mood = "focus" } else if (st >= TALK) { lx = 0f; ly = .1f; mood = if (intr) "evil" else if (kind == "noface") "squint" else "happy" } }
         lookX += (lx - lookX) * .15f; lookY += (ly - lookY) * .15f
         // chair base
-        p.color = 0xFF0C0E17.toInt(); c.drawRect(cx - w * .008f, cy + S * .35f, cx + w * .008f, cy + S * .7f, p)
+        p.color = pal(0xFF0C0E17, 0xFF4A5068); c.drawRect(cx - w * .008f, cy + S * .35f, cx + w * .008f, cy + S * .7f, p)
         for (k in floatArrayOf(-1f, -.4f, .4f, 1f)) c.drawCircle(cx + k * S * .45f, cy + S * .72f, S * .045f, p)
-        sp.color = 0xFF0C0E17.toInt(); sp.strokeWidth = w * .01f; c.drawLine(cx - S * .45f, cy + S * .7f, cx + S * .45f, cy + S * .7f, sp)
-        fun chairBack() { c.save(); c.translate(cx, 0f); c.scale(sx, 1f); rr(c, -S * .62f, cy - S * .85f, S * 1.24f, S * 1.15f, S * .25f, 0xFF1A1E33.toInt()); rr(c, -S * .5f, cy - S * .75f, S * 1f, S * .95f, S * .2f, 0xFF232845.toInt())
+        sp.color = pal(0xFF0C0E17, 0xFF4A5068); sp.strokeWidth = w * .01f; c.drawLine(cx - S * .45f, cy + S * .7f, cx + S * .45f, cy + S * .7f, sp)
+        fun chairBack() { c.save(); c.translate(cx, 0f); c.scale(sx, 1f); rr(c, -S * .62f, cy - S * .85f, S * 1.24f, S * 1.15f, S * .25f, pal(0xFF1A1E33, 0xFF2A2F48)); rr(c, -S * .5f, cy - S * .75f, S * 1f, S * .95f, S * .2f, pal(0xFF232845, 0xFF3B4369))
             p.color = a(A, .8f); c.drawRect(-S * .5f, cy - S * .3f, -S * .46f, cy + S * .15f, p); c.drawRect(S * .46f, cy - S * .3f, S * .5f, cy + S * .15f, p); c.restore() }
-        fun seat() = rr(c, cx - S * .6f * sx, cy + S * .22f, S * 1.2f * sx, S * .16f, S * .08f, 0xFF1A1E33.toInt())
+        fun seat() = rr(c, cx - S * .6f * sx, cy + S * .22f, S * 1.2f * sx, S * .16f, S * .08f, pal(0xFF1A1E33, 0xFF2A2F48))
         fun arm(shx: Float, shy: Float, hx: Float, hy: Float, bend: Float) {
             val mx = (shx + hx) / 2 + bend; val my = (shy + hy) / 2 + abs(bend) * .4f
             path.reset(); path.moveTo(shx, shy); path.quadTo(mx, my, hx, hy)
@@ -282,7 +310,8 @@ class JarvisRenderer {
             for (sd in floatArrayOf(-1f, 1f)) { c.drawLine(sd * S * .18f, bodyY + S * .3f, sd * S * .2f, bodyY + S * .52f + sin(t / 500f + sd) * S * .02f, sp); oval(c, sd * S * .22f, bodyY + S * .56f, S * .1f, S * .05f, shade) }
             c.restore()
             seat()
-            val raise = if (kind == null) 0f else when { st < RAISE -> 0f; st < AIM -> ease(ph(RAISE, AIM)); st < TURN1 -> 1f; else -> 1 - ease(ph(TURN1, TURN1 + 400)) }
+            val raise = if (kind == null) 0f else when { st < AIM -> 1 - (1 - ph(0, AIM)).pow(3); st < TURN1 - 300 -> 1f; else -> 1 - ease(ph(TURN1 - 300, TURN1 + 100)) }
+            if (kind != null && st < AIM + 80) { sp.color = a(A, .35f); sp.strokeWidth = S * .05f; for (k in 1..3) c.drawLine(cx + S * .3f + k * S * .04f, bodyY - k * S * .05f, cx + S * .2f + k * S * .04f, hy + S * .25f - k * S * .03f, sp) }
             val idleX = cx + S * .28f * sx; val idleY = bodyY + S * .02f + (if (mood == "phone") sin(t / 600f) * S * .02f else 0f)
             val aimX = cx + S * .18f * sx; val aimY = hy + S * .12f
             var hRx = idleX + (aimX - idleX) * raise; var hRy = idleY + (aimY - idleY) * raise
@@ -320,8 +349,8 @@ class JarvisRenderer {
             arm(shR[0], shR[1], hRx, hRy, S * .14f * (1 - raise))
             val pw = S * (.2f + .08f * raise)
             if (waving) { } else if (raise > .5f) phone(hRx, hRy - pw * .6f, pw, back = true, scroll = false) else phone(hRx - S * .02f, hRy - pw * .5f, pw, back = false, scroll = true)
-            if (kind != null && st in AIM until FLASH) { val n = 3 - min(2L, (st - AIM) / ((FLASH - AIM) / 3)); text(c, n.toString(), hRx, hRy - pw * 1.6f, S * .28f, if (intr) 0xFFFF3B5C.toInt() else A, bold) }
-            if (kind != null && st < RAISE + 200) text(c, "!", cx + S * .78f, hy - S * .45f - sin(ph(0, RAISE) * PI.toFloat()) * S * .1f, S * .3f, if (intr) 0xFFFF3B5C.toInt() else 0xFFFFD166.toInt(), bold)
+            if (pinOn) text(c, "👀", cx + S * .75f, hy - S * .4f, S * .2f, a(Color.WHITE, .6f + .4f * sin(t / 200f)))
+            if (kind != null && st < 600) text(c, "!", cx + S * .78f, hy - S * .45f - sin(ph(0, 600) * PI.toFloat()) * S * .1f, S * .3f, if (intr) 0xFFFF3B5C.toInt() else 0xFFFFD166.toInt(), bold)
         } else {
             val typing = kind != null && st >= TYPE && st < DONE + 200
             c.save(); c.translate(cx, 0f); c.scale(sx, 1f)
@@ -340,8 +369,13 @@ class JarvisRenderer {
         // effects
         if (alert > 0) { p.color = a(0xFFFF2846.toInt(), .12f * alert); c.drawRect(0f, 0f, w, h, p) }
         if (kind != null && st in FLASH until FLASH + 350) { val f = 1 - ph(FLASH, FLASH + 350); p.color = a(Color.WHITE, .92f * f); c.drawRect(0f, 0f, w, h, p); text(c, "CLICK!", w * .5f, h * .9f, w * .08f, a(0xFF0B0E1A.toInt(), f), bold) }
-        val say = if (kind == null) null else when {
-            st < AIM -> if (kind == "intruder") "Wrong PIN! Smile 📸" else if (face) "Let me check who you are… 🔍" else "Hey! Hold still 📸"
+        // tap ripples
+        var ri = 0
+        while (ri < ripples.size) { val age = now - rippleT[ri]; if (age > 600) { ripples.removeAt(ri); rippleT.removeAt(ri); continue }
+            val q = age / 600f; sp.color = a(A, .7f * (1 - q)); sp.strokeWidth = 2f; c.drawCircle(ripples[ri][0] * w, ripples[ri][1] * h, w * .02f + q * w * .07f, sp); ri++ }
+        val say = if (kind == null) { if (pinOn) (if (now - attentionAt < 2500) "Hmm… someone's unlocking 👀" else "Let's see what you type… 🧐") else if (poking) pokeLine else null } else when {
+            st < FLASH + 60 -> null
+            st < TURN1 + 300 -> if (kind == "intruder") "Gotcha! Let's see who you are 🔍" else "Let's see who you are… 🔍"
             st in TALK until END -> when (kind) { "intruder" -> msgIntruder; "owner" -> msgOwner; "stranger" -> msgStranger; "noface" -> msgNoFace; else -> msgWake }
             else -> null }
         if (say != null) {
@@ -351,5 +385,122 @@ class JarvisRenderer {
             path.reset(); path.moveTo(cx - w * .02f, by + bh - 1); path.lineTo(cx, by + bh + w * .025f); path.lineTo(cx + w * .02f, by + bh - 1); path.close(); p.color = a(Color.WHITE, .96f); c.drawPath(path, p)
             text(c, say, bx + bw / 2, by + bh / 2 + w * .014f, w * .04f, 0xFF0B0E1A.toInt(), bold)
         }
+    }
+
+    // ===== window with the real outdoor world =====
+    private class Sun(val elev: Float, val x: Float, val nightX: Float)
+    private fun sun(now: Long): Sun {
+        val rad = PI / 180; val cal = java.util.Calendar.getInstance(); val n = cal.get(java.util.Calendar.DAY_OF_YEAR)
+        val decl = 23.44 * sin(2 * PI * (284 + n) / 365) * rad; val B = 2 * PI * (n - 81) / 364
+        val eot = 9.87 * sin(2 * B) - 7.53 * cos(B) - 1.5 * sin(B)
+        val utcMin = (now % 86_400_000L) / 60_000.0
+        val solar = utcMin + 4 * lon + eot; val H = (solar / 4 - 180) * rad; val la = lat * rad
+        val elev = Math.asin(sin(la) * sin(decl) + cos(la) * cos(decl) * cos(H)) / rad
+        val H0 = Math.acos((-Math.tan(la) * Math.tan(decl)).coerceIn(-1.0, 1.0)) / rad
+        val hh = ((H / rad + 540) % 360) - 180
+        return Sun(elev.toFloat(), (.5 + hh / (2 * H0)).toFloat(), ((if (hh > 0) hh - H0 else hh + 360 - H0) / (360 - 2 * H0)).toFloat())
+    }
+    private val SKY_E = floatArrayOf(-90f, -10f, -3f, 3f, 10f, 90f)
+    private val SKY_C = arrayOf(longArrayOf(0xFF060A1F, 0xFF141235, 0xFF25183E), longArrayOf(0xFF0B1030, 0xFF2A1748, 0xFF5A2350), longArrayOf(0xFF1D2A6B, 0xFF7A4A8A, 0xFFFF8A6B),
+        longArrayOf(0xFF3D6FD1, 0xFFF29A7A, 0xFFFFC56B), longArrayOf(0xFF4FA6F5, 0xFFA9D6FF, 0xFFFFE7C4), longArrayOf(0xFF3C9BFF, 0xFF9FD2FF, 0xFFE4F3FF))
+    private fun sky(e: Float): IntArray { for (i in 0 until SKY_E.size - 1) if (e <= SKY_E[i + 1]) { val k = (e - SKY_E[i]) / (SKY_E[i + 1] - SKY_E[i]); return IntArray(3) { mix(SKY_C[i][it].toInt(), SKY_C[i + 1][it].toInt(), k) } }
+        return IntArray(3) { SKY_C[5][it].toInt() } }
+    private val farH = FloatArray(14).also { val r = java.util.Random(4); for (k in it.indices) it[k] = .2f + r.nextFloat() * .3f }
+    private val nearH = FloatArray(8).also { val r = java.util.Random(7); for (k in it.indices) it[k] = .25f + r.nextFloat() * .35f }
+    private val stars = FloatArray(80).also { val r = java.util.Random(9); for (k in it.indices) it[k] = r.nextFloat() }
+
+    private fun drawWindow(c: Canvas, w: Float, h: Float, t: Float, now: Long) {
+        val SUN = sun(now); val EL = SUN.elev; val night = EL < -4
+        val dull = when (weather) { "Rain", "Storm", "Snow" -> .55f; "Fog" -> .35f; else -> if (weather == "Cloudy") .15f else 0f }
+        val WX = w * .04f; val WY = h * .05f; val WW = w * .42f; val WH = h * .21f
+        val frame = pal(0xFF05060B, 0xFFC3C9D6)
+        rr(c, WX - w * .02f, WY - w * .02f, WW + w * .04f, WH + w * .04f, w * .014f, frame)
+        c.save(); c.clipRect(WX, WY, WX + WW, WY + WH)
+        var SK = sky(EL); if (dull > 0) SK = IntArray(3) { mix(SK[it], if (night) 0xFF1A1C26.toInt() else 0xFF9AA1AD.toInt(), dull) }
+        p.shader = LinearGradient(0f, WY, 0f, WY + WH, SK, floatArrayOf(0f, .6f, 1f), Shader.TileMode.CLAMP); c.drawRect(WX, WY, WX + WW, WY + WH, p); p.shader = null
+        val starA = ((-EL - 4) / 8).coerceIn(0f, 1f) * (1 - dull * 1.6f).coerceAtLeast(0f)
+        if (starA > 0) for (k in 0 until 40) { p.color = a(Color.WHITE, starA * (.3f + .7f * abs(sin(t / (600f + k * 37) + k)))); val x = WX + stars[k * 2] * WW; val y = WY + stars[k * 2 + 1] * WH * .55f; c.drawRect(x, y, x + 2.5f, y + 2.5f, p) }
+        // moon with today's phase
+        if (EL < 2 && dull < .5f) {
+            val nx = SUN.nightX.coerceIn(0f, 1f); val mx = WX + WW * nx; val my = WY + WH * (.55f - .4f * sin(nx * PI.toFloat())); val mr = WW * .05f
+            val ph = ((((now / 86_400_000.0 + 2440587.5) - 2451550.1) / 29.530588853) % 1.0 + 1.0) % 1.0
+            val al = ((2 - EL) / 6).coerceIn(0f, 1f)
+            circle(c, mx, my, mr, a(0xFF2A2C3E.toInt(), al))
+            val k = cos(ph * 2 * PI).toFloat(); val wax = ph < .5
+            path.reset(); r.set(mx - mr, my - mr, mx + mr, my + mr)
+            path.arcTo(r, -90f, if (wax) 180f else -180f)
+            r.set(mx - abs(k) * mr, my - mr, mx + abs(k) * mr, my + mr)
+            path.arcTo(r, 90f, if (wax xor (k < 0)) -180f else 180f); path.close()
+            p.color = a(0xFFFFF6D8.toInt(), al); c.drawPath(path, p)
+        }
+        // sun
+        if (EL > -3) {
+            val sx = WX + WW * SUN.x.coerceIn(0f, 1f); val sy = WY + WH * (.85f - (EL / 50).coerceIn(0f, 1f) * .7f); val low = (1 - EL / 12).coerceIn(0f, 1f); val al = 1 - dull
+            p.shader = RadialGradient(sx, sy, WW * .2f, intArrayOf(a(Color.rgb(255, (240 - 80 * low).toInt(), (170 - 120 * low).toInt()), al), a(Color.rgb(255, (210 - 90 * low).toInt(), (120 - 90 * low).toInt()), .85f * al), a(0xFFFFC878.toInt(), 0f)), floatArrayOf(0f, .3f, 1f), Shader.TileMode.CLAMP)
+            c.drawRect(WX, WY, WX + WW, WY + WH, p); p.shader = null
+        }
+        // clouds
+        val nc = when (weather) { "Clear" -> 2; "Cloudy" -> 5; else -> 7 }
+        p.color = if (dull > .3f) (if (night) a(0xFF46485A.toInt(), .6f) else a(0xFFAAB0BC.toInt(), .9f)) else if (night) a(0xFF786EAA.toInt(), .25f) else a(Color.WHITE, .85f)
+        for (k in 0 until nc) { val x0 = WX + ((t / (90f + k * 40) + k * WW * .45f) % (WW * 1.5f)) - WW * .25f; val y0 = WY + WH * (.12f + (k % 4) * .1f)
+            c.drawCircle(x0, y0, .06f * WW, p); c.drawCircle(x0 + .05f * WW, y0 - .02f * WW, .07f * WW, p); c.drawCircle(x0 + .1f * WW, y0, .055f * WW, p); c.drawCircle(x0 + .05f * WW, y0 + .015f * WW, .06f * WW, p) }
+        // random events
+        if (evKind == null && now > evNext) {
+            val pool = if (dull > .3f) listOf("plane", "heli") else if (night) listOf("plane", "star", "fireworks", "ufo", "plane", "star") else listOf("plane", "birds", "balloon", "birds", "plane", "heli")
+            evKind = pool.random(); evStart = now; evY = .12f + (Math.random() * .3).toFloat(); evDir = if (Math.random() < .5) 1 else -1
+        }
+        evKind?.let { kind ->
+            val dur = when (kind) { "plane" -> 7000; "star" -> 900; "fireworks" -> 2600; "ufo" -> 5000; "birds" -> 8000; "balloon" -> 14000; else -> 6000 }
+            val q = (now - evStart) / dur.toFloat()
+            if (q >= 1) { evKind = null; evNext = now + 3000 + (Math.random() * 7000).toLong() } else {
+                val ex = if (evDir > 0) WX - WW * .1f + q * WW * 1.2f else WX + WW * 1.1f - q * WW * 1.2f; val ey = WY + WH * evY
+                when (kind) {
+                    "plane" -> { oval(c, ex, ey, WW * .035f, WW * .008f, if (night) 0xFF1A1F3A.toInt() else 0xFFF4F6FA.toInt()); p.color = if (night) 0xFF1A1F3A.toInt() else 0xFFF4F6FA.toInt(); c.drawRect(ex - WW * .008f, ey - WW * .02f, ex + WW * .004f, ey + WW * .02f, p)
+                        circle(c, ex, ey, 3f, if ((t / 400).toInt() % 2 == 1) 0xFFFF3B5C.toInt() else 0xFF39FF9E.toInt())
+                        if (!night) { sp.color = a(Color.WHITE, .7f); sp.strokeWidth = 3f; c.drawLine(ex - evDir * WW * .04f, ey, ex - evDir * WW * .35f, ey, sp) } }
+                    "star" -> { val sx0 = WX + WW * (.2f + evY); val sy0 = WY + WH * .05f; val L = WW * .25f; sp.color = a(Color.WHITE, 1 - q); sp.strokeWidth = 3f; c.drawLine(sx0 + q * L, sy0 + q * L * .5f, sx0 + q * L - WW * .08f, sy0 + q * L * .5f - WW * .04f, sp) }
+                    "fireworks" -> for (f in 0..1) { val fq = (q * 1.6f - f * .5f).coerceIn(0f, 1f); val fx = WX + WW * (.3f + f * .35f); val fy = WY + WH * (.25f + f * .08f); val col = if (f == 1) 0xFFFF5CC8.toInt() else 0xFFFFD166.toInt()
+                        if (fq < .3f) { p.color = col; val yy = WY + WH * .7f - (WH * .7f - (fy - WY)) * fq / .3f; c.drawRect(fx, yy, fx + 3, yy + 6, p) }
+                        else if (fq < 1f) { val rr2 = (fq - .3f) / .7f; for (k in 0 until 14) circle(c, fx + cos(k / 14f * 6.28f) * rr2 * WW * .1f, fy + sin(k / 14f * 6.28f) * rr2 * WW * .1f + rr2 * rr2 * WH * .05f, 3f, a(col, 1 - rr2)) } }
+                    "ufo" -> { val uy = ey + sin(t / 200f) * WH * .03f; p.color = a(0xFF39FF9E.toInt(), .18f); path.reset(); path.moveTo(ex - WW * .02f, uy); path.lineTo(ex + WW * .02f, uy); path.lineTo(ex + WW * .06f, WY + WH); path.lineTo(ex - WW * .06f, WY + WH); path.close(); c.drawPath(path, p)
+                        oval(c, ex, uy, WW * .05f, WW * .014f, 0xFF9AA3C0.toInt()); p.color = 0xFF39FF9E.toInt(); r.set(ex - WW * .022f, uy - WW * .024f, ex + WW * .022f, uy + WW * .004f); c.drawArc(r, 180f, 180f, true, p) }
+                    "birds" -> { sp.color = 0xFF33405A.toInt(); sp.strokeWidth = 2.5f; for (b in 0..3) { val bx = ex - evDir * b * WW * .05f; val by = ey + (b % 2) * WH * .05f + b * WH * .02f; val fl = sin(t / 120f + b) * WW * .012f
+                        path.reset(); path.moveTo(bx - WW * .018f, by - fl); path.quadTo(bx - WW * .008f, by - WW * .006f, bx, by); path.quadTo(bx + WW * .008f, by - WW * .006f, bx + WW * .018f, by - fl); c.drawPath(path, sp) } }
+                    "balloon" -> { val by = ey + sin(t / 900f) * WH * .04f; circle(c, ex, by, WW * .045f, 0xFFFF6B6B.toInt()); p.color = 0xFFFFD166.toInt(); c.drawRect(ex - WW * .012f, by - WW * .045f, ex + WW * .012f, by + WW * .045f, p)
+                        sp.color = 0xFF6B4A2A.toInt(); sp.strokeWidth = 1.5f; c.drawLine(ex - WW * .025f, by + WW * .035f, ex - WW * .012f, by + WW * .075f, sp); c.drawLine(ex + WW * .025f, by + WW * .035f, ex + WW * .012f, by + WW * .075f, sp)
+                        p.color = 0xFF8A5A2A.toInt(); c.drawRect(ex - WW * .014f, by + WW * .075f, ex + WW * .014f, by + WW * .095f, p) }
+                    else -> { oval(c, ex, ey, WW * .03f, WW * .014f, 0xFF2A3550.toInt()); p.color = 0xFF2A3550.toInt(); c.drawRect(min(ex, ex - evDir * WW * .06f), ey - 2, max(ex, ex - evDir * WW * .06f), ey + 2, p)
+                        sp.color = 0xFF2A3550.toInt(); sp.strokeWidth = 2.5f; val rw = WW * .045f * abs(sin(t / 30f)); c.drawLine(ex - rw, ey - WW * .02f, ex + rw, ey - WW * .02f, sp) }
+                }
+            }
+        }
+        // skyline
+        val dayK = ((EL + 4) / 12).coerceIn(0f, 1f)
+        p.color = mix(0xFF1B1640.toInt(), 0xFF9FB3D1.toInt(), dayK)
+        for (k in 0 until 14) { val bh = WH * farH[k]; c.drawRect(WX + WW * k / 14, WY + WH - bh, WX + WW * k / 14 + WW / 14 * .9f, WY + WH, p) }
+        for (k in 0 until 8) {
+            val bx = WX + WW * k / 8; val bw = WW / 8 * .86f; val bh = WH * nearH[k]
+            p.color = mix(0xFF0B0A1C.toInt(), 0xFF6F84A8.toInt(), dayK); c.drawRect(bx, WY + WH - bh, bx + bw, WY + WH, p)
+            for (j in 0 until 10) {
+                val on = EL < 3 && sin(t / 4000f + k * 3 + j * 7) > -.3f + (EL.coerceIn(0f, 3f) / 3) * 1.2f
+                p.color = if (on) (if (j % 3 != 0) 0xFFFFD68C.toInt() else 0xFF3EE8FF.toInt()) else if (dayK < .5f) 0xFF15142A.toInt() else a(0xFFDCEBFF.toInt(), .6f)
+                val lx = bx + bw * .18f + (j % 2) * bw * .4f; val ly = WY + WH - bh + bh * .08f + (j / 2) * bh * .17f; c.drawRect(lx, ly, lx + bw * .22f, ly + bh * .07f, p)
+            }
+            if (k == 3) circle(c, bx + bw / 2, WY + WH - bh - 4, 3f, if ((t / 600).toInt() % 2 == 1 && night) 0xFFFF3B5C.toInt() else 0xFF55607A.toInt())
+        }
+        if (weather == "Fog") { p.color = if (night) a(0xFF5A5F6E.toInt(), .45f) else a(0xFFE6E9EE.toInt(), .6f); c.drawRect(WX, WY + WH * .3f, WX + WW, WY + WH, p) }
+        p.color = if (night) a(Color.WHITE, .05f) else a(Color.WHITE, .22f)
+        path.reset(); path.moveTo(WX + WW * .1f, WY); path.lineTo(WX + WW * .24f, WY); path.lineTo(WX + WW * .06f, WY + WH); path.lineTo(WX - WW * .08f, WY + WH); path.close(); c.drawPath(path, p)
+        c.restore()
+        // panes, blind, sill, plant, light on the wall
+        p.color = frame; c.drawRect(WX + WW / 2 - w * .006f, WY, WX + WW / 2 + w * .006f, WY + WH, p); c.drawRect(WX, WY + WH * .42f - w * .005f, WX + WW, WY + WH * .42f + w * .005f, p)
+        val trim = pal(0xFF2A2F48, 0xFFE7E9EF)
+        rr(c, WX - w * .025f, WY - w * .03f, WW + w * .05f, h * .016f, w * .006f, trim); p.color = pal(0xFF1D2236, 0xFFCFD4DE); c.drawRect(WX + WW * .48f, WY - w * .015f, WX + WW * .48f + w * .004f, WY - w * .015f + h * .03f, p)
+        rr(c, WX - w * .03f, WY + WH + w * .012f, WW + w * .06f, h * .012f, w * .004f, trim)
+        val potY = WY + WH + w * .012f
+        rr(c, WX + WW * .08f, potY - h * .022f, w * .04f, h * .022f, 3f, 0xFFC76B4A.toInt())
+        for (k in -2..2) { c.save(); c.rotate((k * .35f + sin(t / 1200f) * .05f) * 57.3f, WX + WW * .08f + w * .02f + k * w * .008f, potY - h * .03f); oval(c, WX + WW * .08f + w * .02f + k * w * .008f, potY - h * .03f, w * .006f, w * .016f, 0xFF3FAE6A.toInt()); c.restore() }
+        p.color = if (night) a(0xFF9B6BFF.toInt(), .05f) else a(0xFFFFF2C4.toInt(), .12f)
+        path.reset(); path.moveTo(WX + WW, WY); path.lineTo(WX + WW + w * .3f, WY + h * .12f); path.lineTo(WX + WW + w * .3f, WY + h * .12f + WH * .8f); path.lineTo(WX + WW, WY + WH); path.close(); c.drawPath(path, p)
     }
 }
