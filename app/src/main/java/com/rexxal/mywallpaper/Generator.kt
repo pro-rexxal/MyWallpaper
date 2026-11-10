@@ -25,14 +25,14 @@ object Generator {
     // Each palette: dark, mid, bright, accent
     val PALETTE_NAMES = listOf("Random", "Violet", "Ocean", "Sunset", "Forest", "Candy", "Ember", "Ice", "Mono")
     private val PALETTES = listOf(
-        intArrayOf(0xFF0D0B1E, 0xFF3A1C71, 0xFF7C5CFF, 0xFFFF6EC7),
-        intArrayOf(0xFF031926, 0xFF0B4F6C, 0xFF20A4F3, 0xFF7FFFD4),
-        intArrayOf(0xFF1A0B2E, 0xFF7B2D5B, 0xFFFF7E5F, 0xFFFEB47B),
-        intArrayOf(0xFF07130D, 0xFF1F4D2B, 0xFF57A773, 0xFFD9ED92),
-        intArrayOf(0xFF2B0F3A, 0xFFE4508F, 0xFFFFB3C6, 0xFF8EECF5),
-        intArrayOf(0xFF140404, 0xFF6A0D0D, 0xFFFF4D00, 0xFFFFC300),
-        intArrayOf(0xFF0A1220, 0xFF2E4A6B, 0xFFA9D6E5, 0xFFFFFFFF),
-        intArrayOf(0xFF0B0B0C, 0xFF3A3A40, 0xFF9A9AA5, 0xFFF2F2F2)
+        longArrayOf(0xFF0D0B1E, 0xFF3A1C71, 0xFF7C5CFF, 0xFFFF6EC7),
+        longArrayOf(0xFF031926, 0xFF0B4F6C, 0xFF20A4F3, 0xFF7FFFD4),
+        longArrayOf(0xFF1A0B2E, 0xFF7B2D5B, 0xFFFF7E5F, 0xFFFEB47B),
+        longArrayOf(0xFF07130D, 0xFF1F4D2B, 0xFF57A773, 0xFFD9ED92),
+        longArrayOf(0xFF2B0F3A, 0xFFE4508F, 0xFFFFB3C6, 0xFF8EECF5),
+        longArrayOf(0xFF140404, 0xFF6A0D0D, 0xFFFF4D00, 0xFFFFC300),
+        longArrayOf(0xFF0A1220, 0xFF2E4A6B, 0xFFA9D6E5, 0xFFFFFFFF),
+        longArrayOf(0xFF0B0B0C, 0xFF3A3A40, 0xFF9A9AA5, 0xFFF2F2F2)
     ).map { arr -> IntArray(arr.size) { arr[it].toInt() } }
 
     fun render(style: Int, seed: Long, palette: Int, w: Int, h: Int): Bitmap {
