@@ -26,7 +26,8 @@ class JarvisPage(private val a: MainActivity) {
     private val c = a
     private val p = Ui.prefs(c)
     private fun dp(v: Int) = Ui.dp(c, v)
-    private val jr = JarvisRenderer().also { JarvisSettings.apply(p, it) }
+    private val snd = JarvisSound(a)
+    private val jr = JarvisRenderer().also { JarvisSettings.apply(p, it); it.onSfx = { n -> snd.sfx(n) }; it.onSay = { t -> snd.say(t) } }
     private lateinit var preview: View
     private lateinit var status: TextView
     private lateinit var logList: LinearLayout
@@ -116,6 +117,20 @@ class JarvisPage(private val a: MainActivity) {
         // ---- look ----
         col.addView(Ui.section(c, "Look"))
         val lk = Ui.card(c)
+        lk.addView(Ui.label(c, "Lock screen moves"))
+        lk.addView(Ui.text(c, "Tilt, shake, pick up or cover the top of the phone. Works on the lock screen too. Shake = he flies around with his jetpack fixing his room.", 12f, Ui.MUTED))
+        val mv = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(6), 0, 0) }
+        for ((lb, k) in listOf("📳 Shake" to "shake", "✋ Pick up" to "pick", "🙈 Cover" to "cover"))
+            mv.addView(Ui.pill(c, lb) { val n = System.currentTimeMillis(); jr.motion(k, n); if (k == "cover") preview.postDelayed({ jr.motion("uncover", System.currentTimeMillis()) }, 1600) }, LinearLayout.LayoutParams(Ui.WRAP, Ui.WRAP).apply { rightMargin = dp(6) })
+        lk.addView(mv)
+        lk.addView(Ui.label(c, "Sound"))
+        Ui.toggle(c, lk, "Sound", p.getBoolean("jv_snd", false)) { p.edit().putBoolean("jv_snd", it).apply(); if (it) snd.sfx("beep") }
+        Ui.toggle(c, lk, "Voice (says his lines)", p.getBoolean("jv_voice", true)) { p.edit().putBoolean("jv_voice", it).apply() }
+        Ui.toggle(c, lk, "Robot voice", p.getBoolean("jv_robot", true)) { p.edit().putBoolean("jv_robot", it).apply(); snd.say("Hi sir, welcome back.") }
+        Ui.toggle(c, lk, "Sound effects", p.getBoolean("jv_fx", true)) { p.edit().putBoolean("jv_fx", it).apply() }
+        Ui.toggle(c, lk, "Only make noise on a wrong PIN or stranger", p.getBoolean("jv_alarm_only", false)) { p.edit().putBoolean("jv_alarm_only", it).apply() }
+        Ui.slider(c, lk, "Volume", 100, p.getInt("jv_vol", 70), { "$it%" }) { p.edit().putInt("jv_vol", it).apply() }
+        lk.addView(Ui.text(c, "Stays quiet when your phone is on silent or vibrate.", 12f, Ui.MUTED))
         lk.addView(Ui.label(c, "Room theme"))
         lk.addView(Ui.choice(c, listOf("🌑 Dark", "☀ Light"), if (p.getBoolean("jv_light", false)) 1 else 0) { p.edit().putBoolean("jv_light", it == 1).apply(); JarvisSettings.apply(p, jr) }.view)
         lk.addView(Ui.text(c, "The window shows the real sky: time of day, sun, moon phase and live weather. It uses the city set in Robot → Weather.", 12f, Ui.MUTED).apply { setPadding(0, Ui.dp(c, 6), 0, 0) })

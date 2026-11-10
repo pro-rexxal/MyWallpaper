@@ -13,7 +13,7 @@ import java.io.File
 class JarvisWallpaperService : WallpaperService() {
     override fun onCreateEngine(): Engine = JarvisEngine()
 
-    inner class JarvisEngine : Engine(), SharedPreferences.OnSharedPreferenceChangeListener {
+    inner class JarvisEngine : Engine(), SharedPreferences.OnSharedPreferenceChangeListener, android.hardware.SensorEventListener {
         private val ctx = this@JarvisWallpaperService
         private val prefs = Ui.prefs(ctx)
         private val handler = Handler(Looper.getMainLooper())
@@ -28,6 +28,8 @@ class JarvisWallpaperService : WallpaperService() {
             prefs.registerOnSharedPreferenceChangeListener(this)
             JarvisSettings.apply(prefs, jr)
             setTouchEventsEnabled(true)
+            jr.onSfx = { sound.sfx(it) }
+            jr.onSay = { sound.say(it) }
             val f = android.content.IntentFilter().apply { addAction(android.content.Intent.ACTION_SCREEN_ON); addAction(android.content.Intent.ACTION_SCREEN_OFF); addAction(android.content.Intent.ACTION_USER_PRESENT) }
             if (android.os.Build.VERSION.SDK_INT >= 33) ctx.registerReceiver(screenRx, f, android.content.Context.RECEIVER_NOT_EXPORTED) else ctx.registerReceiver(screenRx, f)
         }
@@ -43,6 +45,41 @@ class JarvisWallpaperService : WallpaperService() {
             }
         }
 
+        private val sound = JarvisSound(ctx)
+        // ----- motion sensors: tilt, shake, pick-up, hand over the top of the phone -----
+        private val sm by lazy { ctx.getSystemService(android.hardware.SensorManager::class.java) }
+        private var sensorsOn = false
+        private val grav = FloatArray(3); private var gInit = false
+        private val shakes = ArrayList<Long>(); private var flatSince = 0L; private var lastPick = 0L; private var near = false
+        private fun sensors(on: Boolean) {
+            if (on == sensorsOn) return; sensorsOn = on
+            try {
+                if (on) { sm.getDefaultSensor(android.hardware.Sensor.TYPE_ACCELEROMETER)?.let { sm.registerListener(this, it, android.hardware.SensorManager.SENSOR_DELAY_UI) }
+                    sm.getDefaultSensor(android.hardware.Sensor.TYPE_PROXIMITY)?.let { sm.registerListener(this, it, android.hardware.SensorManager.SENSOR_DELAY_NORMAL) } }
+                else { sm.unregisterListener(this); gInit = false; near = false }
+            } catch (e: Exception) { }
+        }
+        override fun onAccuracyChanged(s: android.hardware.Sensor?, a: Int) {}
+        override fun onSensorChanged(e: android.hardware.SensorEvent) {
+            val now = System.currentTimeMillis()
+            if (e.sensor.type == android.hardware.Sensor.TYPE_PROXIMITY) {
+                val isNear = e.values[0] < e.sensor.maximumRange.coerceAtMost(5f)
+                if (isNear != near) { near = isNear; jr.motion(if (isNear) "cover" else "uncover", now) }
+                return
+            }
+            if (!gInit) { System.arraycopy(e.values, 0, grav, 0, 3); gInit = true }
+            for (i in 0..2) grav[i] = grav[i] * .85f + e.values[i] * .15f
+            jr.tiltX = (-grav[0] / 6f).coerceIn(-1f, 1f); jr.tiltY = ((grav[1] - 6f) / -6f).coerceIn(-1f, 1f)
+            // shake: several hard jolts in a short time
+            val lin = Math.sqrt(((e.values[0] - grav[0]) * (e.values[0] - grav[0]) + (e.values[1] - grav[1]) * (e.values[1] - grav[1]) + (e.values[2] - grav[2]) * (e.values[2] - grav[2])).toDouble())
+            if (lin > 11) { if (shakes.isEmpty() || now - shakes.last() > 120) shakes.add(now); shakes.removeAll { now - it > 900 }; if (shakes.size >= 3) { shakes.clear(); jr.motion("shake", now) } }
+            // pick-up: was lying flat and still, now lifted
+            val flat = Math.abs(grav[2]) > 9f && lin < 1.2
+            if (flat) { if (flatSince == 0L) flatSince = now } else if (flatSince != 0L) {
+                if (now - flatSince > 2000 && Math.abs(grav[2]) < 8.2f && now - lastPick > 8000) { lastPick = now; jr.motion("pick", now) }
+                if (Math.abs(grav[2]) < 8.2f) flatSince = 0L }
+        }
+
         private var lastLockCheck = 0L; private var wasLocked = false
         private var downX = 0f; private var downY = 0f; private var downT = 0L
         override fun onTouchEvent(e: android.view.MotionEvent) {
@@ -56,7 +93,7 @@ class JarvisWallpaperService : WallpaperService() {
             }
         }
 
-        override fun onDestroy() { try { ctx.unregisterReceiver(screenRx) } catch (e: Exception) { }; prefs.unregisterOnSharedPreferenceChangeListener(this); handler.removeCallbacks(drawRunnable); super.onDestroy() }
+        override fun onDestroy() { sensors(false); sound.release(); try { ctx.unregisterReceiver(screenRx) } catch (e: Exception) { }; prefs.unregisterOnSharedPreferenceChangeListener(this); handler.removeCallbacks(drawRunnable); super.onDestroy() }
 
         private fun loadPhoto(path: String?) {
             if (path == null) return
@@ -78,11 +115,12 @@ class JarvisWallpaperService : WallpaperService() {
 
         override fun onVisibilityChanged(v: Boolean) {
             visible = v
+            sensors(v)
             if (v) { WeatherFetcher.refresh(ctx); val pk = pending; if (pk != null) jr.trigger(pk, System.currentTimeMillis()) else jr.clear(); pending = null; drawFrame() } else handler.removeCallbacks(drawRunnable)
         }
 
         override fun onSurfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) { super.onSurfaceChanged(holder, format, width, height); drawFrame() }
-        override fun onSurfaceDestroyed(holder: SurfaceHolder) { visible = false; handler.removeCallbacks(drawRunnable); super.onSurfaceDestroyed(holder) }
+        override fun onSurfaceDestroyed(holder: SurfaceHolder) { visible = false; sensors(false); handler.removeCallbacks(drawRunnable); super.onSurfaceDestroyed(holder) }
 
         private fun drawFrame() {
             handler.removeCallbacks(drawRunnable)

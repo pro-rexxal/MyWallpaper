@@ -71,6 +71,41 @@ class JarvisRenderer {
     // outdoor events
     private var evKind: String? = null; private var evStart = 0L; private var evNext = 0L; private var evY = .2f; private var evDir = 1
 
+    // sound hooks (set by the wallpaper)
+    var onSfx: ((String) -> Unit)? = null
+    var onSay: ((String) -> Unit)? = null
+    private var lastSay: String? = null
+    private var sndSeqStart = -1L; private var sndShut = false; private var sndEnd = false; private var sndKey = -1
+    // motion sensors (work on the lock screen)
+    var tiltX = 0f; var tiltY = 0f
+    private var shakeAt = -100_000L; private var pickAt = -100_000L; private var coverUntil = 0L
+    private var messStart = -1L; private val messAng = FloatArray(5); private var messLine = ""; private val messDone = BooleanArray(8)
+    private val FIX_P = arrayOf(floatArrayOf(.82f, .09f), floatArrayOf(.17f, .38f), floatArrayOf(.5f, .355f), floatArrayOf(.83f, .38f), floatArrayOf(.15f, .585f))
+    private val FIX_LINE = arrayOf("My poster…", "Left screen…", "Easy now…", "Almost there…", "My coffee 😢")
+    private val M_SHAKE = 1200L; private val M_STAND = 1800L; private val M_STEP = 800L; private val M_SIT = 5800L; private val M_END = 7000L
+
+    fun motion(kind: String, now: Long) {
+        if (seqKind != null && now - seqStart < END) return
+        val rnd = { (if (Math.random() < .5) -1f else 1f) }
+        when (kind) {
+            "shake" -> { if (messStart >= 0) return; shakeAt = now; pokeLine = null; messStart = now; messDone.fill(false)
+                for (i in 0..3) messAng[i] = rnd() * (.12f + (Math.random() * .18).toFloat()) * (if (i == 0) 1.6f else if (i == 2) .7f else 1f); messAng[4] = rnd() * 1.45f
+                messLine = listOf("Whoa! Stop shaking me 😵", "Earthquake?! 😱", "Hey hey HEY! 😵").random(); onSfx?.invoke("grumble") }
+            "pick" -> { if (messStart >= 0) return; pickAt = now; poke(listOf("Oh, you're back 👀", "Hey there! 👋", "Picked me up? Hi! 🤖").random(), "happy", now); onSfx?.invoke("chirp") }
+            "cover" -> { if (messStart >= 0) return; coverUntil = now + 4000; poke("Hey! I can't see! 🙈", "squint", now); onSfx?.invoke("hmm") }
+            "uncover" -> { if (now < coverUntil) { coverUntil = 0; poke("Peekaboo! 😄", "happy", now); onSfx?.invoke("beep") } }
+        }
+    }
+    private fun mAng(i: Int, now: Long): Float {
+        if (messStart < 0 || i < 0) return 0f
+        val m = now - messStart; val a = messAng[i]
+        if (m < M_SHAKE) return a * min(1f, m / 500f) + sin(m / 40f) * .03f
+        val f = M_STAND + i * M_STEP
+        if (m < f + 480) return a
+        if (m < f + M_STEP - 60) { val q = (m - f - 480f) / (M_STEP - 540f); return a * (1 - ease(q)) + sin(m / 30f) * .02f * (1 - q) }
+        return 0f
+    }
+
     /** Someone woke the locked phone: lean in and watch the keypad. */
     fun attention(now: Long, on: Boolean, keep: Boolean = false) {
         if (!on) { attentionUntil = 0L; return }
@@ -83,9 +118,10 @@ class JarvisRenderer {
         tapX = nx; tapY = ny; tapAt = now; ripples.add(floatArrayOf(nx, ny)); rippleT.add(now)
         if (seqKind != null && now - seqStart < END) return
         taps.removeAll { now - it > 1500 }; taps.add(now)
-        if (taps.size >= 4) { poke("Okay okay, I see you! Stop tapping 😤", "evil", now); taps.clear(); return }
+        if (messStart >= 0) return
+        if (taps.size >= 4) { poke("Okay okay, I see you! Stop tapping 😤", "evil", now); taps.clear(); onSfx?.invoke("grumble"); return }
         val S = .3f * w / h
-        if (abs(nx - .5f) < .2f && ny > .73f - 1.07f * S && ny < .73f + .45f * S) { poke(POKES[pokeN++ % POKES.size], "happy", now); bumpAt = now; return }
+        if (abs(nx - .5f) < .2f && ny > .73f - 1.07f * S && ny < .73f + .45f * S) { poke(POKES[pokeN++ % POKES.size], "happy", now); bumpAt = now; onSfx?.invoke("beep"); return }
         SPOTS.firstOrNull { (r, _) -> nx >= r[0] && nx <= r[2] && ny >= r[1] && ny <= r[3] }?.let { poke(it.second, "idle", now) }
     }
     private fun poke(line: String, mood: String, now: Long) { pokeLine = line; pokeMood = mood; pokeAt = now }
@@ -141,6 +177,10 @@ class JarvisRenderer {
         fun ph(x: Long, y: Long) = ((st - x).toFloat() / (y - x)).coerceIn(0f, 1f)
         val alert = if (intr && st < END) (sin(t / 140f) + 1) / 2 else 0f
         val BACK = .71f
+        if (messStart >= 0 && now - messStart > M_END) messStart = -1L
+        val mt = if (messStart >= 0) now - messStart else Long.MAX_VALUE / 4; val messing = messStart >= 0
+        c.save()
+        if (messing && mt < M_SHAKE) { val k = 1 - mt / M_SHAKE.toFloat(); c.translate(w / 2, h / 2); c.rotate(sin(t / 37f) * .025f * k * 57.3f); c.translate(-w / 2 + sin(t / 23f) * w * .015f * k, -h / 2 + cos(t / 29f) * h * .008f * k) }
 
         // ===== room =====
         p.shader = LinearGradient(0f, 0f, 0f, h * BACK, pal(0xFF0A0C16, 0xFFF1F2F6), pal(0xFF121628, 0xFFDFE3EC), Shader.TileMode.CLAMP); c.drawRect(0f, 0f, w, h * BACK, p); p.shader = null
@@ -154,8 +194,9 @@ class JarvisRenderer {
         p.color = 0xFF9B6BFF.toInt(); path.reset(); path.moveTo(w * .73f, h * .17f); path.lineTo(w * .75f, h * .13f); path.lineTo(w * .77f, h * .17f); path.close(); c.drawPath(path, p)
         circle(c, w * .83f, h * .155f, w * .022f, 0xFFCFD5E6.toInt()); circle(c, w * .83f, h * .155f, w * .008f, A)
         // poster
+        c.save(); c.rotate(mAng(0, now) * 57.3f, w * .82f, h * .04f)
         rr(c, w * .72f, h * .04f, w * .2f, h * .1f, 4f, 0xFF0D1120.toInt()); sp.color = a(0xFF39FF9E.toInt(), .7f); sp.strokeWidth = 1.5f; c.drawRect(w * .725f, h * .044f, w * .915f, h * .136f, sp)
-        text(c, "ROOT", w * .82f, h * .08f, w * .024f, 0xFF39FF9E.toInt(), mono); text(c, "ACCESS", w * .82f, h * .105f, w * .024f, 0xFF39FF9E.toInt(), mono)
+        text(c, "ROOT", w * .82f, h * .08f, w * .024f, 0xFF39FF9E.toInt(), mono); text(c, "ACCESS", w * .82f, h * .105f, w * .024f, 0xFF39FF9E.toInt(), mono); c.restore()
         // router
         c.save(); c.translate(w * .12f, -h * .035f)
         rr(c, w * .47f, h * .11f, w * .07f, h * .02f, 3f, pal(0xFF1D2236, 0xFFB9C0CF))
@@ -166,8 +207,8 @@ class JarvisRenderer {
         // ===== desk + monitors =====
         val DESK = .6f
         p.color = pal(0xFF1D2236, 0xFFB9C0CF); c.drawRect(w * .495f, h * .25f, w * .505f, h * DESK, p)
-        fun mon(x0: Float, y0: Float, x1: Float, y1: Float, skew: Float, content: (Float, Float) -> Unit) {
-            c.save(); c.translate((x0 + x1) / 2 * w, (y0 + y1) / 2 * h); c.skew(0f, skew)
+        fun mon(x0: Float, y0: Float, x1: Float, y1: Float, skew: Float, id: Int, content: (Float, Float) -> Unit) {
+            c.save(); c.translate((x0 + x1) / 2 * w, (y0 + y1) / 2 * h); c.rotate(mAng(id, now) * 57.3f); c.skew(0f, skew)
             val mw = (x1 - x0) * w; val mh = (y1 - y0) * h
             rr(c, -mw / 2 - w * .012f, -mh / 2 - w * .012f, mw + w * .024f, mh + w * .03f, w * .012f, 0xFF151A2B.toInt())
             rr(c, -mw / 2, -mh / 2, mw, mh, w * .006f, 0xFF03050B.toInt())
@@ -184,15 +225,15 @@ class JarvisRenderer {
             }
         }
         fun redAlert(mw: Float, mh: Float, label: String) { p.color = a(0xFFFF3B5C.toInt(), .2f + .3f * alert); c.drawRect(-mw / 2, -mh / 2, mw / 2, mh / 2, p); text(c, label, 0f, mh * .05f, mw * .1f, 0xFFFF3B5C.toInt(), bold) }
-        mon(.05f, .3f, .29f, .46f, .1f) { mw, mh -> if (alert > 0) redAlert(mw, mh, if (kind == "stranger") "⚠ UNKNOWN" else "⚠ INTRUDER") else codeScreen(mw, mh, A, 70f, 11) }
-        mon(.71f, .3f, .95f, .46f, -.1f) { mw, mh ->
+        mon(.05f, .3f, .29f, .46f, .1f, 1) { mw, mh -> if (alert > 0) redAlert(mw, mh, if (kind == "stranger") "⚠ UNKNOWN" else "⚠ INTRUDER") else codeScreen(mw, mh, A, 70f, 11) }
+        mon(.71f, .3f, .95f, .46f, -.1f, 3) { mw, mh ->
             if (alert > 0) redAlert(mw, mh, if (kind == "stranger") "NOT OWNER" else "WRONG PIN") else {
                 sp.color = a(0xFF39FF9E.toInt(), .85f); sp.strokeWidth = mw * .01f
                 for (L in 0..1) { path.reset(); for (k in 0..40) { val x = -mw / 2 + mw * k / 40; val y = (if (L == 1) mh * .2f else -mh * .1f) + sin(k * .5f + t / (250f + L * 120)) * mh * .12f * sin(k * .2f + t / 700f); if (k == 0) path.moveTo(x, y) else path.lineTo(x, y) }; c.drawPath(path, sp) }
                 text(c, "NET  " + (40 + (30 * sin(t / 500f)).toInt()) + " Mb/s", -mw * .45f, -mh * .36f, mw * .05f, a(0xFF39FF9E.toInt(), .8f), mono, Paint.Align.LEFT)
             }
         }
-        mon(.27f, .24f, .73f, .47f, 0f) { mw, mh ->
+        mon(.27f, .24f, .73f, .47f, 0f, 2) { mw, mh ->
             val fs = mw * .045f; val lx = -mw / 2 + mw * .05f
             if (kind != null && st >= TYPE && st < DONE) {
                 val file = "capture_" + SimpleDateFormat("HHmmss", Locale.US).format(seqStamp) + ".jpg"
@@ -244,8 +285,11 @@ class JarvisRenderer {
         rr(c, w * .33f, h * (DESK - .012f), w * .34f, h * .016f, w * .008f, 0xFF1B2034.toInt())
         for (k in 0 until 14) { p.color = a(if (k % 4 != 0) A else 0xFFFF6EC7.toInt(), .3f + .25f * sin(t / 260f + k)); c.drawRect(w * (.345f + k * .022f), h * (DESK - .008f), w * (.361f + k * .022f), h * DESK, p) }
         rr(c, w * .71f, h * (DESK - .01f), w * .035f, h * .012f, w * .01f, 0xFF1B2034.toInt())
-        rr(c, w * .12f, h * (DESK - .035f), w * .06f, h * .035f, w * .01f, pal(0xFF2A2F48, 0xFFFFFFFF))
-        for (k in 0..1) { val pp = ((t / 1200f) + k / 2f) % 1f; circle(c, w * (.15f + sin(pp * 6) * .01f), h * (DESK - .04f - pp * .04f), w * .01f * (1 + pp), a(if (light) 0xFF6E7387.toInt() else Color.WHITE, .22f * (1 - pp))) }
+        val mugA = mAng(4, now)
+        if (abs(mugA) > .6f) oval(c, w * .15f + Math.signum(mugA) * w * .05f, h * (DESK - .002f), w * .045f * min(1f, abs(mugA)), h * .004f, 0x8C6E3C1E.toInt())
+        c.save(); c.rotate(mugA * 57.3f, w * (if (mugA > 0) .18f else .12f), h * DESK)
+        rr(c, w * .12f, h * (DESK - .035f), w * .06f, h * .035f, w * .01f, pal(0xFF2A2F48, 0xFFFFFFFF)); c.restore()
+        if (abs(mugA) < .2f) for (k in 0..1) { val pp = ((t / 1200f) + k / 2f) % 1f; circle(c, w * (.15f + sin(pp * 6) * .01f), h * (DESK - .04f - pp * .04f), w * .01f * (1 + pp), a(if (light) 0xFF6E7387.toInt() else Color.WHITE, .22f * (1 - pp))) }
         // floor + rug + glow
         p.shader = LinearGradient(0f, h * BACK, 0f, h, pal(0xFF0F1220, 0xFFD6DBE4), pal(0xFF06070D, 0xFFC2C8D4), Shader.TileMode.CLAMP); c.drawRect(0f, h * BACK, w, h, p); p.shader = null
         oval(c, w * .5f, h * .86f, w * .46f, h * .07f, pal(0xFF161A2E, 0xFFB8C0D0)); sp.color = a(A, .25f); sp.strokeWidth = 2f; r.set(w * .08f, h * .802f, w * .92f, h * .918f); c.drawOval(r, sp)
@@ -266,26 +310,50 @@ class JarvisRenderer {
         var turn = 0f
         if (kind != null) turn = when { st in TURN1 until TYPE -> ease(ph(TURN1, TYPE)); st in TYPE until TURN2 -> 1f; st in TURN2 until TALK -> 1 - ease(ph(TURN2, TALK)); else -> 0f }
         val facingBack = turn > .5f; val sx = max(.05f, abs(cos(turn * PI.toFloat())))
-        val cx = w * .5f; val S = w * .3f; val pinOn = kind == null && now < attentionUntil
-        val bumpA = max(0f, 1 - (now - bumpAt) / 400f)
-        val cy = h * .73f + sin(t / 700f) * S * .015f - sin(bumpA * PI.toFloat()) * S * .08f + (if (pinOn) S * .04f else 0f); val B = body; val shade = darker(B, .82f)
+        val S = w * .3f; val pinOn = kind == null && now < attentionUntil
+        val bumpA = max(0f, 1 - (now - bumpAt) / 400f); val shakeA = max(0f, 1 - (now - shakeAt) / 1200f)
+        val chX = w * .5f + sin(t / 35f) * w * .02f * shakeA + tiltX * w * .015f
+        val chY = h * .73f + sin(t / 700f) * S * .015f - sin(bumpA * PI.toFloat()) * S * .08f + (if (pinOn) S * .04f else 0f)
+        val fixI = if (messing && mt >= M_STAND && mt < M_SIT) ((mt - M_STAND) / M_STEP).toInt() else -1
+        var flyX = chX; var flyY = chY; val flying = messing && mt >= M_SHAKE && mt < M_SIT + 600
+        if (flying) {
+            fun wp(i: Int) = if (i == 0) floatArrayOf(chX, chY) else { val it = FIX_P[i - 1]; floatArrayOf((it[0] * w + (if (it[0] < .5f) S * .62f else -S * .62f)).coerceIn(S * .75f, w - S * .75f), it[1] * h + S * .32f) }
+            fun go(a: FloatArray, b: FloatArray, q: Float) { val e = ease(q.coerceIn(0f, 1f)); flyX = a[0] + (b[0] - a[0]) * e; flyY = a[1] + (b[1] - a[1]) * e - sin(e * PI.toFloat()) * S * .25f }
+            when {
+                mt < M_STAND -> go(wp(0), wp(1), (mt - M_SHAKE) / (M_STAND - M_SHAKE).toFloat())
+                mt >= M_SIT -> go(wp(5), wp(0), (mt - M_SIT) / 600f)
+                fixI > 0 -> go(wp(fixI), wp(fixI + 1), (mt - M_STAND - fixI * M_STEP) / 350f)
+                else -> { val p1 = wp(1); flyX = p1[0]; flyY = p1[1] }
+            }
+            flyY += sin(t / 180f) * S * .04f
+        }
+        val cx = flyX
+        val cy = flyY; val B = body; val shade = darker(B, .82f)
         if (now > nextLook) { lookTx = (Math.random() * 2 - 1).toFloat(); lookTy = (Math.random() * 1.2 - .2).toFloat(); nextLook = now + 1200 + (Math.random() * 2200).toLong() }
         var lx = lookTx; var ly = lookTy; var eyeScale = 1f; var mood = "idle"
         if (kind == null && sin(t / 3000f) > .3f) { lx = .55f; ly = .9f; mood = "phone" }
         val tAge = now - tapAt; val hyy = cy - S * .62f
         val poking = kind == null && pokeLine != null && now - pokeAt < 2600
         if (kind == null && tAge < 1800) { lx = ((tapX * w - cx) / (S * 1.1f)).coerceIn(-1f, 1f); ly = ((tapY * h - hyy) / (S * 1.1f)).coerceIn(-1f, 1f); mood = "idle"; if (tAge < 220) eyeScale = 1.12f }
+        if (kind == null && tAge >= 1800 && (abs(tiltX) > .05f || abs(tiltY) > .05f)) { lx = tiltX; ly = tiltY; mood = "idle" }
+        if (kind == null && now < coverUntil) mood = "squint"
+        if (kind == null && now - pickAt < 700) eyeScale = 1.25f
         if (poking) mood = pokeMood
+        if (messing) { when {
+            mt < M_SHAKE -> { mood = "squint"; lx = sin(t / 60f); ly = cos(t / 70f) * .5f }
+            fixI >= 0 -> { mood = "focus"; lx = ((FIX_P[fixI][0] * w - cx) / (S * .8f)).coerceIn(-1f, 1f); ly = -1f }
+            mt >= M_SIT -> mood = "happy"
+            else -> mood = "evil" } }
         if (pinOn) { lx = sin(t / 380f) * .45f; ly = 1f; eyeScale = 1.15f + .08f * max(0f, sin(t / 160f)); mood = "focus" }
         if (kind != null) { if (st < FLASH + 200) { lx = 0f; ly = 0f; eyeScale = 1.2f; mood = "focus" } else if (st >= TALK) { lx = 0f; ly = .1f; mood = if (intr) "evil" else if (kind == "noface") "squint" else "happy" } }
         lookX += (lx - lookX) * .15f; lookY += (ly - lookY) * .15f
         // chair base
-        p.color = pal(0xFF0C0E17, 0xFF4A5068); c.drawRect(cx - w * .008f, cy + S * .35f, cx + w * .008f, cy + S * .7f, p)
-        for (k in floatArrayOf(-1f, -.4f, .4f, 1f)) c.drawCircle(cx + k * S * .45f, cy + S * .72f, S * .045f, p)
-        sp.color = pal(0xFF0C0E17, 0xFF4A5068); sp.strokeWidth = w * .01f; c.drawLine(cx - S * .45f, cy + S * .7f, cx + S * .45f, cy + S * .7f, sp)
-        fun chairBack() { c.save(); c.translate(cx, 0f); c.scale(sx, 1f); rr(c, -S * .62f, cy - S * .85f, S * 1.24f, S * 1.15f, S * .25f, pal(0xFF1A1E33, 0xFF2A2F48)); rr(c, -S * .5f, cy - S * .75f, S * 1f, S * .95f, S * .2f, pal(0xFF232845, 0xFF3B4369))
-            p.color = a(A, .8f); c.drawRect(-S * .5f, cy - S * .3f, -S * .46f, cy + S * .15f, p); c.drawRect(S * .46f, cy - S * .3f, S * .5f, cy + S * .15f, p); c.restore() }
-        fun seat() = rr(c, cx - S * .6f * sx, cy + S * .22f, S * 1.2f * sx, S * .16f, S * .08f, pal(0xFF1A1E33, 0xFF2A2F48))
+        p.color = pal(0xFF0C0E17, 0xFF4A5068); c.drawRect(chX - w * .008f, chY + S * .35f, chX + w * .008f, chY + S * .7f, p)
+        for (k in floatArrayOf(-1f, -.4f, .4f, 1f)) c.drawCircle(chX + k * S * .45f, chY + S * .72f, S * .045f, p)
+        sp.color = pal(0xFF0C0E17, 0xFF4A5068); sp.strokeWidth = w * .01f; c.drawLine(chX - S * .45f, chY + S * .7f, chX + S * .45f, chY + S * .7f, sp)
+        fun chairBack() { c.save(); c.translate(chX, 0f); c.scale(sx, 1f); rr(c, -S * .62f, chY - S * .85f, S * 1.24f, S * 1.15f, S * .25f, pal(0xFF1A1E33, 0xFF2A2F48)); rr(c, -S * .5f, chY - S * .75f, S * 1f, S * .95f, S * .2f, pal(0xFF232845, 0xFF3B4369))
+            p.color = a(A, .8f); c.drawRect(-S * .5f, chY - S * .3f, -S * .46f, chY + S * .15f, p); c.drawRect(S * .46f, chY - S * .3f, S * .5f, chY + S * .15f, p); c.restore() }
+        fun seat() = rr(c, chX - S * .6f * sx, chY + S * .22f, S * 1.2f * sx, S * .16f, S * .08f, pal(0xFF1A1E33, 0xFF2A2F48))
         fun arm(shx: Float, shy: Float, hx: Float, hy: Float, bend: Float) {
             val mx = (shx + hx) / 2 + bend; val my = (shy + hy) / 2 + abs(bend) * .4f
             path.reset(); path.moveTo(shx, shy); path.quadTo(mx, my, hx, hy)
@@ -305,6 +373,14 @@ class JarvisRenderer {
         val shL = floatArrayOf(cx - S * .4f * sx, bodyY - S * .12f); val shR = floatArrayOf(cx + S * .4f * sx, bodyY - S * .12f)
         if (!facingBack) {
             chairBack()
+            if (flying) {
+                for (sd in floatArrayOf(-1f, 1f)) { val jx = cx + sd * S * .46f; val jy = cy + S * .12f
+                    rr(c, jx - S * .09f, jy - S * .2f, S * .18f, S * .36f, S * .06f, 0xFF3A4166.toInt()); p.color = A; c.drawRect(jx - S * .05f, jy - S * .12f, jx + S * .05f, jy - S * .09f, p)
+                    val fl = S * (.38f + .14f * sin(t / 25f + sd) + (Math.random() * .08).toFloat())
+                    p.shader = LinearGradient(0f, jy + S * .16f, 0f, jy + S * .16f + fl, intArrayOf(a(Color.WHITE, .95f), a(0xFFFFD25A.toInt(), .95f), a(0xFFFF5A28.toInt(), .7f), a(0xFFFF3C1E.toInt(), 0f)), floatArrayOf(0f, .25f, .7f, 1f), Shader.TileMode.CLAMP)
+                    path.reset(); path.moveTo(jx - S * .07f, jy + S * .16f); path.quadTo(jx, jy + S * .16f + fl * 1.3f, jx + S * .07f, jy + S * .16f); path.close(); c.drawPath(path, p); p.shader = null }
+                oval(c, cx, cy + S * .9f, S * .5f, S * .12f, a(0xFFFFB84D.toInt(), .12f))
+            }
             c.save(); c.translate(cx, 0f); c.scale(sx, 1f)
             oval(c, 0f, bodyY + S * .06f, S * .48f, S * .4f, shade); oval(c, 0f, bodyY + S * .02f, S * .44f, S * .37f, B); oval(c, 0f, bodyY + S * .06f, S * .22f, S * .16f, 0xFF0B0E1A.toInt())
             sp.color = A; sp.strokeWidth = S * .02f; path.reset()
@@ -321,6 +397,9 @@ class JarvisRenderer {
             var hRx = idleX + (aimX - idleX) * raise; var hRy = idleY + (aimY - idleY) * raise
             val waving = kind == "owner" && st >= TALK && st < TALK + 2600
             if (waving) { hRx = cx + S * .62f + sin(t / 110f) * S * .1f; hRy = hy - S * .15f }
+            if (fixI >= 0) { val it = FIX_P[fixI]; val ls = mt - M_STAND - fixI * M_STEP; val q = ease(((ls - 330) / 150f).coerceIn(0f, 1f)) * (1 - ease(((ls - 730) / 70f).coerceIn(0f, 1f)))
+                val tx = it[0] * w + (if (it[0] < .5f) S * .15f else -S * .15f); val ty = it[1] * h + sin(t / 60f) * S * .03f * (if (ls > 400) 1f else 0f)
+                hRx += (tx - hRx) * q; hRy += (ty - hRy) * q }
             arm(shL[0], shL[1], cx - S * .58f * sx, bodyY + S * .24f, -S * .12f)
             // head
             c.save(); c.translate(cx, 0f); c.scale(sx, 1f)
@@ -352,7 +431,7 @@ class JarvisRenderer {
             c.restore()
             arm(shR[0], shR[1], hRx, hRy, S * .14f * (1 - raise))
             val pw = S * (.2f + .08f * raise)
-            if (waving) { } else if (raise > .5f) phone(hRx, hRy - pw * .6f, pw, back = true, scroll = false) else phone(hRx - S * .02f, hRy - pw * .5f, pw, back = false, scroll = true)
+            if (waving || fixI >= 0) { } else if (raise > .5f) phone(hRx, hRy - pw * .6f, pw, back = true, scroll = false) else phone(hRx - S * .02f, hRy - pw * .5f, pw, back = false, scroll = true)
             if (pinOn) text(c, "👀", cx + S * .75f, hy - S * .4f, S * .2f, a(Color.WHITE, .6f + .4f * sin(t / 200f)))
             if (kind != null && st < 600) text(c, "!", cx + S * .78f, hy - S * .45f - sin(ph(0, 600) * PI.toFloat()) * S * .1f, S * .3f, if (intr) 0xFFFF3B5C.toInt() else 0xFFFFD166.toInt(), bold)
         } else {
@@ -370,6 +449,7 @@ class JarvisRenderer {
             sp.color = a(A, .7f); sp.strokeWidth = w * .004f; path.reset(); path.moveTo(w * .27f, h * (DESK - .012f) + S * .13f); path.quadTo(w * .35f, h * (DESK + .03f), w * .5f, h * (DESK + .02f)); c.drawPath(path, sp)
             if (typing && Math.random() < .3) text(c, listOf("0", "1", "{", "}", ";").random(), cx + ((Math.random() - .5) * S * .6f).toFloat(), kY - S * .25f - (Math.random() * S * .2f).toFloat(), S * .12f, a(A, .9f), mono)
         }
+        c.restore()
         // effects
         if (alert > 0) { p.color = a(0xFFFF2846.toInt(), .12f * alert); c.drawRect(0f, 0f, w, h, p) }
         if (kind != null && st in FLASH until FLASH + 350) { val f = 1 - ph(FLASH, FLASH + 350); p.color = a(Color.WHITE, .92f * f); c.drawRect(0f, 0f, w, h, p); text(c, "CLICK!", w * .5f, h * .9f, w * .08f, a(0xFF0B0E1A.toInt(), f), bold) }
@@ -382,13 +462,33 @@ class JarvisRenderer {
             st < TURN1 + 300 -> if (kind == "intruder") "Gotcha! Let's see who you are 🔍" else "Let's see who you are… 🔍"
             st in TALK until END -> when (kind) { "intruder" -> msgIntruder; "owner" -> msgOwner; "stranger" -> msgStranger; "noface" -> msgNoFace; else -> msgWake }
             else -> null }
-        if (say != null) {
+        val say2 = if (messing && kind == null) when { mt < M_SHAKE -> messLine; mt < M_STAND -> "Ugh… my setup! Booster on 🚀"; fixI >= 0 -> FIX_LINE[fixI]; mt < M_END -> "There. All fixed 😤"; else -> null } else say
+        sounds(kind, st, intr, say2, mt, fixI)
+        if (say2 != null) { val say = say2
             tp.textSize = w * .04f; tp.typeface = bold; val tw = tp.measureText(say); val pad = w * .03f; val bw = min(w * .92f, tw + pad * 2); val bh = w * .04f + pad * 1.4f
-            val bx = (cx - bw / 2).coerceIn(w * .04f, w * .96f - bw); val by = hy - S * .6f - bh
+            val bx = (cx - bw / 2).coerceIn(w * .04f, w * .96f - bw); val by = max(h * .035f, hy - S * .6f - bh)
             rr(c, bx, by, bw, bh, bh / 2, a(Color.WHITE, .96f))
             path.reset(); path.moveTo(cx - w * .02f, by + bh - 1); path.lineTo(cx, by + bh + w * .025f); path.lineTo(cx + w * .02f, by + bh - 1); path.close(); p.color = a(Color.WHITE, .96f); c.drawPath(path, p)
             text(c, say, bx + bw / 2, by + bh / 2 + w * .014f, w * .04f, 0xFF0B0E1A.toInt(), bold)
         }
+    }
+
+    private fun sounds(kind: String?, st: Long, intr: Boolean, say: String?, mt: Long, fixI: Int) {
+        val fx = onSfx
+        if (fx != null) {
+            if (kind != null) {
+                if (sndSeqStart != seqStart) { sndSeqStart = seqStart; sndShut = false; sndEnd = false; sndKey = -1 }
+                if (st >= FLASH && !sndShut) { sndShut = true; fx("shutter") }
+                if (st in TYPE until UPLOAD) { val k = ((st - TYPE) / 95).toInt(); if (k != sndKey) { sndKey = k; if (Math.random() < .8) fx("key") } }
+                if (st >= TALK && !sndEnd) { sndEnd = true; if (intr) fx("alarm") else if (kind == "owner") fx("chirp") else if (kind == "noface") fx("hmm") }
+            }
+            if (mt < M_END) {
+                if (mt >= M_SHAKE && !messDone[5]) { messDone[5] = true; fx("jet") }
+                if (fixI >= 0 && mt - M_STAND - fixI * M_STEP > 500 && !messDone[fixI]) { messDone[fixI] = true; fx("fix") }
+                if (mt >= M_SIT && !messDone[6]) { messDone[6] = true; fx("land") }
+            }
+        }
+        if (say != lastSay) { if (say != null) onSay?.invoke(say); lastSay = say }
     }
 
     // ===== window with the real outdoor world =====
