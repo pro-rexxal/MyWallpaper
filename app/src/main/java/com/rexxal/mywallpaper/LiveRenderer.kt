@@ -24,7 +24,7 @@ import kotlin.math.sin
 
 /** Everything the live wallpaper can be customized with. */
 data class LiveConfig(
-    var bgMode: Int = 1,          // 0 photo, 1 gradient, 2 particles, 3 solid
+    var bgMode: Int = 4,          // 0 photo, 1 gradient, 2 particles, 3 solid, 4 robot room
     var color1: Int = 0xFF7C5CFF.toInt(),
     var color2: Int = 0xFF1B1F3B.toInt(),
     var speed: Int = 4,           // 1..10
@@ -45,9 +45,17 @@ data class LiveConfig(
     var align: Int = 1,           // 0 left, 1 center, 2 right
     var robot: Boolean = true,
     var robotColor: Int = 0xFFFFFFFF.toInt(),
-    var robotSize: Int = 22       // % of screen width
+    var robotSize: Int = 18,      // % of screen width
+    var sleepSec: Int = 25,
+    var winMode: Int = 0,         // 0 real world, 1 dream world, 2 fixed scene
+    var weatherSel: Int = 0,      // 0 live from your city, 1.. = WEATHERS[i-1]
+    var city: String = "",
+    var scene: Int = 3,
+    var neonTheme: Int = 0,
+    var lightsOn: Boolean = true,
+    var liveWeather: String = "Clear"
 ) {
-    val animated get() = bgMode == 1 || bgMode == 2 || robot
+    val animated get() = bgMode == 1 || bgMode == 2 || bgMode == 4 || robot
 
     fun save(p: SharedPreferences) {
         p.edit()
@@ -60,12 +68,14 @@ data class LiveConfig(
             .putInt("lv_dfmt", dateFormat).putInt("lv_dsize", dateSize).putBoolean("lv_dabove", dateAbove)
             .putInt("lv_y", posY).putInt("lv_align", align)
             .putBoolean("lv_robot", robot).putInt("lv_rcol", robotColor).putInt("lv_rsize", robotSize)
+            .putInt("lv_sleep", sleepSec).putInt("lv_win", winMode).putInt("lv_wsel", weatherSel).putString("lv_city", city)
+            .putInt("lv_scene", scene).putInt("lv_neon", neonTheme).putBoolean("lv_lights", lightsOn)
             .apply()
     }
 
     companion object {
         fun load(p: SharedPreferences) = LiveConfig(
-            bgMode = p.getInt("lv_bg", 1), color1 = p.getInt("lv_c1", 0xFF7C5CFF.toInt()),
+            bgMode = p.getInt("lv_bg", 4), color1 = p.getInt("lv_c1", 0xFF7C5CFF.toInt()),
             color2 = p.getInt("lv_c2", 0xFF1B1F3B.toInt()), speed = p.getInt("lv_speed", 4),
             photoDim = p.getInt("lv_dim", 25), showTime = p.getBoolean("lv_time", true),
             use24h = p.getBoolean("lv_24", false), showSeconds = p.getBoolean("lv_sec", false),
@@ -76,7 +86,10 @@ data class LiveConfig(
             dateAbove = p.getBoolean("lv_dabove", false),
             posY = p.getInt("lv_y", 30), align = p.getInt("lv_align", 1),
             robot = p.getBoolean("lv_robot", true), robotColor = p.getInt("lv_rcol", 0xFFFFFFFF.toInt()),
-            robotSize = p.getInt("lv_rsize", 22)
+            robotSize = p.getInt("lv_rsize", 18),
+            sleepSec = p.getInt("lv_sleep", 25), winMode = p.getInt("lv_win", 0), weatherSel = p.getInt("lv_wsel", 0),
+            city = p.getString("lv_city", "") ?: "", scene = p.getInt("lv_scene", 3), neonTheme = p.getInt("lv_neon", 0),
+            lightsOn = p.getBoolean("lv_lights", true), liveWeather = p.getString("wx_now", "Clear") ?: "Clear"
         )
     }
 }
@@ -98,7 +111,7 @@ object LiveRenderer {
     }
 
     val DATE_PATTERNS = listOf("EEEE, d MMMM", "EEE, d MMM", "d MMMM yyyy", "dd/MM/yyyy", "MMMM d", "EEEE")
-    val BG_LABELS = listOf("Photo", "Gradient", "Particles", "Solid")
+    val BG_LABELS = listOf("Photo", "Gradient", "Particles", "Solid", "Robot room")
 
     fun dateExample(i: Int): String = SimpleDateFormat(DATE_PATTERNS[i], Locale.getDefault()).format(Date())
 
@@ -139,13 +152,16 @@ object LiveRenderer {
         }
     }
 
-    fun draw(c: Canvas, w: Int, h: Int, now: Long, cfg: LiveConfig, photo: Bitmap?, robot: Robot? = null) {
+    fun draw(c: Canvas, w: Int, h: Int, now: Long, cfg: LiveConfig, photo: Bitmap?, world: RoomWorld? = null) {
         val wf = w.toFloat()
         val hf = h.toFloat()
-        val t = now / 1000f * (cfg.speed / 4f)
+        val t = AnimClock.sec(now) * (cfg.speed / 4f)
+        world?.applyCfg(cfg)
+        val finish = world?.draw(c, wf, hf, now, cfg, cfg.bgMode == 4)
 
         // ----- background -----
         when (cfg.bgMode) {
+            4 -> {}
             0 -> {
                 if (photo != null) {
                     val sc = max(wf / photo.width, hf / photo.height)
@@ -208,7 +224,11 @@ object LiveRenderer {
         datePaint.textAlign = align
         datePaint.color = cfg.textColor
         datePaint.textSize = wf * cfg.dateSize / 100f
-        if (cfg.shadow) {
+        if (cfg.shadow && cfg.bgMode == 4 && world != null) {
+            val g = (world.neon[0] and 0x00FFFFFF) or (0xC0 shl 24)
+            timePaint.setShadowLayer(wf * 0.045f, 0f, 0f, g)
+            datePaint.setShadowLayer(wf * 0.03f, 0f, 0f, g)
+        } else if (cfg.shadow) {
             timePaint.setShadowLayer(wf * 0.012f, 0f, wf * 0.004f, 0x88000000.toInt())
             datePaint.setShadowLayer(wf * 0.008f, 0f, wf * 0.003f, 0x88000000.toInt())
         } else {
@@ -237,8 +257,8 @@ object LiveRenderer {
             if (dateStr.isNotEmpty()) c.drawText(dateStr, x, y + timeH * 0.85f + gap + datePaint.textSize * 0.3f, datePaint)
         }
 
-        // ----- robot buddy -----
-        if (cfg.robot && robot != null) robot.draw(c, wf, hf, now, cfg.robotColor, cfg.robotSize)
+        // ----- robot, drone & effects on top -----
+        finish?.invoke()
     }
 
     /** Milliseconds until the next redraw is needed. */

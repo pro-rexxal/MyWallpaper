@@ -285,7 +285,7 @@ object CreatorRenderer {
     private fun styled(c: Canvas, s: String, x: Float, y: Float, el: TextEl, size: Float, alpha: Float, now: Long, blockW: Float) {
         if (alpha <= 0.003f || s.isEmpty()) return
         val tf = typeface(el)
-        val t = now / 1000f
+        val t = AnimClock.sec(now)
         var glowMul = 1f
         if (el.idle == I_BREATHE) glowMul = 0.4f + 0.6f * (0.5f + 0.5f * sin(t * 2.2f))
         var mainColor = el.color
@@ -371,7 +371,7 @@ object CreatorRenderer {
 
         val style = if (dirIn) el.inAnim else el.outAnim
         val p = if (dirIn) easeOut(pLinear) else 1f - easeIn(1f - pLinear)
-        val t = now / 1000f
+        val t = AnimClock.sec(now)
         var alpha = el.opacity / 100f
         var dx = 0f; var dy = 0f; var scale = 1f; var rot = 0f; var flip = 0f
         val sign = if (dirIn) -1f else 1f   // in: comes from behind the motion; out: leaves along it

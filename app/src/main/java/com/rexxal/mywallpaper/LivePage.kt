@@ -51,17 +51,80 @@ class LivePage(private val a: MainActivity) {
         col.addView(Ui.section(c, "Robot buddy"))
         val bot = Ui.card(c)
         bot.addView(Ui.text(c,
-            "Tap him · tap anywhere to send him there · drag to lead him · double-tap for the time. " +
-                "Ignore him and he falls asleep. Try it on the preview above!", 12f, Ui.MUTED))
+            "Tap him for giggles · hold to pet · drag to pick him up · swipe up for a backflip · double-tap for the time · " +
+                "triple-tap for a dance party · tap the floor for a ball · tap any gadget and he uses it · tap the lamp for lights. " +
+                "Try it on the preview above!", 12f, Ui.MUTED))
+        val status = Ui.text(c, "", 13f, Ui.TEXT).apply { setPadding(0, dp(8), 0, dp(4)) }
+        bot.addView(status)
+        val tick = object : Runnable { override fun run() { status.text = preview.world.status(); status.postDelayed(this, 500) } }
+        status.post(tick)
+        val acts = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL }
+        val now = { System.currentTimeMillis() }
+        listOf<Pair<String, () -> Unit>>(
+            "⚽ Ball" to { preview.world.throwBall(now()) }, "🧃 Fuel" to { preview.world.fuel(now()) },
+            "🎉 Party" to { preview.world.party(now()) }, "💬 Nice thought" to { preview.world.wake(now(), ""); preview.world.say(RoomWorld.THOUGHTS.random(), now(), 4000) },
+            "🔓 Unlock" to { preview.world.unlock(now()) }, "😴 Bed" to { preview.world.nap(now()) }
+        ).forEach { (l, f) -> acts.addView(Ui.pill(c, l) { f(); preview.invalidate() }, LinearLayout.LayoutParams(Ui.WRAP, Ui.WRAP).apply { rightMargin = dp(8) }) }
+        bot.addView(android.widget.HorizontalScrollView(c).apply { isHorizontalScrollBarEnabled = false; addView(acts) })
         Ui.toggle(c, bot, "Show robot", cfg.robot) { cfg.robot = it; changed() }
         Ui.slider(c, bot, "Size", 26, cfg.robotSize - 12, { "${it + 12}" }) { cfg.robotSize = it + 12; changed() }
+        Ui.slider(c, bot, "Naps after", 115, cfg.sleepSec - 5, { "${it + 5}s" }) { cfg.sleepSec = it + 5; changed() }
         bot.addView(Ui.label(c, "Color"))
         bot.addView(Ui.colors(c, cfg.robotColor) { cfg.robotColor = it; changed() })
-        bot.addView(Ui.pill(c, "💬  Say something nice") {
-            preview.robot.say(Robot.THOUGHTS.random(), System.currentTimeMillis(), 4000L)
-            preview.invalidate()
-        }, LinearLayout.LayoutParams(Ui.WRAP, Ui.WRAP).apply { topMargin = dp(8) })
         col.addView(bot)
+
+        // Window & room
+        col.addView(Ui.section(c, "Window & room"))
+        val room = Ui.card(c)
+        room.addView(Ui.text(c, "These apply when the background is set to \"Robot room\".", 12f, Ui.MUTED))
+        room.addView(Ui.label(c, "Window shows"))
+        val weatherBox = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL }
+        val sceneBox = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL }
+        val dreamBox = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL }
+        fun showMode(m: Int) { weatherBox.visibility = if (m == 0) android.view.View.VISIBLE else android.view.View.GONE; sceneBox.visibility = if (m == 2) android.view.View.VISIBLE else android.view.View.GONE; dreamBox.visibility = if (m == 1) android.view.View.VISIBLE else android.view.View.GONE }
+        room.addView(Ui.choice(c, listOf("Real world", "Dream world", "Fixed scene"), cfg.winMode) { cfg.winMode = it; changed(); showMode(it) }.view)
+        // real weather
+        weatherBox.addView(Ui.label(c, "Weather"))
+        weatherBox.addView(Ui.choice(c, listOf("Live from my city") + RoomWorld.WEATHERS, cfg.weatherSel) { cfg.weatherSel = it; changed() }.view)
+        weatherBox.addView(Ui.label(c, "Your city"))
+        val cityRow = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL }
+        val cityIn = android.widget.EditText(c).apply {
+            setText(cfg.city); hint = "e.g. Jaipur"; setTextColor(Ui.TEXT); setHintTextColor(Ui.MUTED); textSize = 15f; isSingleLine = true
+            background = Ui.rounded(c, Ui.SURFACE2, 12); setPadding(dp(12), dp(9), dp(12), dp(9))
+        }
+        val wxStatus = Ui.text(c, p.getString("wx_place", null)?.let { "Now in $it: ${p.getString("wx_now", "?")}" } ?: "", 12f, Ui.MUTED)
+        cityRow.addView(cityIn, LinearLayout.LayoutParams(0, Ui.WRAP, 1f))
+        cityRow.addView(Ui.pill(c, "Update") {
+            cfg.city = cityIn.text.toString().trim(); changed()
+            wxStatus.text = "Checking weather…"
+            WeatherFetcher.refresh(c, force = true) { msg -> a.runOnUiThread { wxStatus.text = msg; cfg.liveWeather = p.getString("wx_now", "Clear") ?: "Clear"; changed() } }
+        }, LinearLayout.LayoutParams(Ui.WRAP, Ui.WRAP).apply { leftMargin = dp(8) })
+        weatherBox.addView(cityRow, LinearLayout.LayoutParams(Ui.MATCH, Ui.WRAP).apply { topMargin = dp(4) })
+        weatherBox.addView(wxStatus)
+        room.addView(weatherBox)
+        // fixed scene
+        sceneBox.addView(Ui.label(c, "Scene"))
+        sceneBox.addView(Ui.choice(c, RoomWorld.SCENES, cfg.scene) { cfg.scene = it; changed() }.view)
+        room.addView(sceneBox)
+        // dream world
+        dreamBox.addView(Ui.label(c, "Random events show up every minute or so. Trigger one now:"))
+        dreamBox.addView(Ui.choice(c, RoomWorld.DREAMS, -1) { preview.world.startEvent(RoomWorld.DREAMS[it], now()); preview.invalidate() }.view)
+        room.addView(dreamBox)
+        showMode(cfg.winMode)
+        room.addView(Ui.label(c, "Neon theme"))
+        room.addView(Ui.choice(c, RoomWorld.NEON_NAMES, cfg.neonTheme) { cfg.neonTheme = it; changed() }.view)
+        val lights = Ui.toggle(c, room, "Room lights", cfg.lightsOn) { cfg.lightsOn = it; changed() }
+        preview.touch.onLightsChanged = { on -> cfg.lightsOn = on; lights.isChecked = on }
+        col.addView(room)
+
+        // Charging
+        col.addView(Ui.section(c, "Charging"))
+        val pw = Ui.card(c)
+        pw.addView(Ui.text(c,
+            "His battery is your phone's battery. Plug your phone in and a cable slides out of the wall and connects to him, " +
+                "with a ⚡ on his chest. Unplug and it pops off. When your battery is low he gets tired and asks for a charge. " +
+                "Try plugging your phone in now and watch the preview.", 12f, Ui.MUTED))
+        col.addView(pw)
 
         // Background
         col.addView(Ui.section(c, "Background"))

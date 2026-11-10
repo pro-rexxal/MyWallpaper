@@ -5,44 +5,44 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.os.Handler
 import android.os.Looper
-import android.view.Choreographer
 import android.service.wallpaper.WallpaperService
+import android.view.Choreographer
 import android.view.MotionEvent
 import android.view.SurfaceHolder
-import kotlin.math.abs
 
-/** The live wallpaper itself: background + customizable clock and date. */
+/** The Live wallpaper: robot room (or other backgrounds) + customizable clock and date. */
 class ClockWallpaperService : WallpaperService() {
 
     override fun onCreateEngine(): Engine = ClockEngine()
 
     inner class ClockEngine : Engine(), SharedPreferences.OnSharedPreferenceChangeListener {
+        private val ctx = this@ClockWallpaperService
         private val handler = Handler(Looper.getMainLooper())
-        private val prefs = Ui.prefs(this@ClockWallpaperService)
+        private val prefs = Ui.prefs(ctx)
         private var cfg = LiveConfig.load(prefs)
         private var photo: Bitmap? = null
         private var photoVer = -1L
         private var visible = false
-        private val robot = Robot()
+        private val world = RoomWorld()
+        private val touch = RoomTouch(world)
+        private val battery = BatteryReader(ctx)
         private var sw = 1
         private var sh = 1
-        private var downX = 0f
-        private var downY = 0f
-        private var dragging = false
-        private val drawRunnable = Runnable { drawFrame() }
-        private val frameCallback = Choreographer.FrameCallback { drawFrame() }
         private var hardware = true
-
-        private fun stopFrames() {
-            handler.removeCallbacks(drawRunnable)
-            Choreographer.getInstance().removeFrameCallback(frameCallback)
+        private var lastFrameNs = 0L
+        private val drawRunnable = Runnable { drawFrame() }
+        private val frameCallback = Choreographer.FrameCallback { ns ->
+            // the room runs at ~30fps to stay smooth on older phones; other styles at full rate
+            if (cfg.bgMode == 4 && ns - lastFrameNs < 30_000_000L) scheduleFrame() else { lastFrameNs = ns; drawFrame() }
         }
 
         override fun onCreate(surfaceHolder: SurfaceHolder) {
             super.onCreate(surfaceHolder)
             setTouchEventsEnabled(true)
             prefs.registerOnSharedPreferenceChangeListener(this)
+            touch.onLightsChanged = { on -> cfg.lightsOn = on; prefs.edit().putBoolean("lv_lights", on).apply() }
             reload()
+            WeatherFetcher.refresh(ctx)
         }
 
         override fun onDestroy() {
@@ -51,35 +51,27 @@ class ClockWallpaperService : WallpaperService() {
             super.onDestroy()
         }
 
+        private fun stopFrames() {
+            handler.removeCallbacks(drawRunnable)
+            Choreographer.getInstance().removeFrameCallback(frameCallback)
+        }
+
+        private fun scheduleFrame() = Choreographer.getInstance().postFrameCallback(frameCallback)
+
         override fun onVisibilityChanged(v: Boolean) {
             visible = v
             if (v) {
-                robot.onReturn(System.currentTimeMillis())
+                val now = System.currentTimeMillis()
+                if (!isPreview()) world.onReturn(now)
+                if (cfg.winMode == 0 && cfg.weatherSel == 0) WeatherFetcher.refresh(ctx)
                 drawFrame()
             } else stopFrames()
         }
 
         override fun onSurfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
             super.onSurfaceChanged(holder, format, width, height)
-            sw = width.coerceAtLeast(1)
-            sh = height.coerceAtLeast(1)
+            sw = width.coerceAtLeast(1); sh = height.coerceAtLeast(1)
             drawFrame()
-        }
-
-        override fun onTouchEvent(e: MotionEvent) {
-            if (!cfg.robot) return
-            val now = System.currentTimeMillis()
-            when (e.actionMasked) {
-                MotionEvent.ACTION_DOWN -> { downX = e.x; downY = e.y; dragging = false }
-                MotionEvent.ACTION_MOVE -> {
-                    if (abs(e.x - downX) + abs(e.y - downY) > sw * 0.05f) dragging = true
-                    if (dragging) robot.onDrag(e.x / sw, e.y / sh, now)
-                }
-                MotionEvent.ACTION_UP -> if (!dragging) {
-                    robot.onTap(e.x / sw, e.y / sh, now, cfg.robotSize / 100f, sw.toFloat() / sh)
-                }
-            }
-            if (visible) drawFrame()
         }
 
         override fun onSurfaceDestroyed(holder: SurfaceHolder) {
@@ -88,9 +80,13 @@ class ClockWallpaperService : WallpaperService() {
             super.onSurfaceDestroyed(holder)
         }
 
+        override fun onTouchEvent(e: MotionEvent) {
+            if (touch.onTouch(e, e.x, e.y, sw.toFloat(), sh.toFloat(), cfg) && visible) drawFrame()
+        }
+
         override fun onSharedPreferenceChanged(p: SharedPreferences?, key: String?) {
             reload()
-            drawFrame()
+            if (visible) drawFrame()
         }
 
         private fun reload() {
@@ -98,38 +94,29 @@ class ClockWallpaperService : WallpaperService() {
             val ver = prefs.getLong("live_bg_ver", 0L)
             if (cfg.bgMode == 0 && (photo == null || ver != photoVer)) {
                 photoVer = ver
-                val (sw, _) = Ui.screenSize(this@ClockWallpaperService)
-                photo = LiveRenderer.loadPhoto(this@ClockWallpaperService, sw)
-            } else if (cfg.bgMode != 0) {
-                photo = null
-            }
+                val (w, _) = Ui.screenSize(ctx)
+                photo = LiveRenderer.loadPhoto(ctx, w)
+            } else if (cfg.bgMode != 0) photo = null
         }
 
         private fun drawFrame() {
             stopFrames()
+            val now = System.currentTimeMillis()
+            if (battery.poll(now)) world.setPower(battery.level, battery.charging, now)
             val holder = surfaceHolder
             var canvas: Canvas? = null
             try {
                 canvas = if (hardware) {
                     try { holder.lockHardwareCanvas() } catch (e: Exception) { hardware = false; holder.lockCanvas() }
                 } else holder.lockCanvas()
-                if (canvas != null) {
-                    LiveRenderer.draw(canvas, canvas.width, canvas.height, System.currentTimeMillis(), cfg, photo, robot)
-                }
+                if (canvas != null) LiveRenderer.draw(canvas, canvas.width, canvas.height, now, cfg, photo, world)
             } catch (e: Exception) {
-                // surface not ready; try again next frame
             } finally {
-                if (canvas != null) {
-                    try {
-                        holder.unlockCanvasAndPost(canvas)
-                    } catch (e: Exception) {
-                    }
-                }
+                if (canvas != null) try { holder.unlockCanvasAndPost(canvas) } catch (e: Exception) { }
             }
             if (visible) {
                 val delay = LiveRenderer.nextDelay(cfg, System.currentTimeMillis())
-                if (delay <= 40L) Choreographer.getInstance().postFrameCallback(frameCallback)
-                else handler.postDelayed(drawRunnable, delay)
+                if (delay <= 40L) scheduleFrame() else handler.postDelayed(drawRunnable, delay)
             }
         }
     }

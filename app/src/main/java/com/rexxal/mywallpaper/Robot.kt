@@ -221,7 +221,7 @@ class Robot {
         val happy = now < happyUntil
         val waving = now < waveUntil
 
-        val bob = if (sleeping) sin(now / 900f) * s * 0.02f else sin(now / 380f) * s * 0.05f
+        val bob = if (sleeping) sin(AnimClock.ms(now) / 900f) * s * 0.02f else sin(AnimClock.ms(now) / 380f) * s * 0.05f
         val bt = (now - bounceStart) / 550f
         val bounce = if (bt in 0f..1f) -sin(bt * PI.toFloat()) * s * 0.45f else 0f
         val groundY = y * h
@@ -239,10 +239,10 @@ class Robot {
         c.drawOval(rect, paint)
 
         c.save()
-        if (walking) c.rotate(facing * 5f + sin(now / 120f) * 2f, cx, cy + s * 0.5f)
+        if (walking) c.rotate(facing * 5f + sin(AnimClock.ms(now) / 120f) * 2f, cx, cy + s * 0.5f)
 
         // hover jet
-        val jet = if (sleeping) 40 else 120 + (sin(now / 90f) * 40).toInt()
+        val jet = if (sleeping) 40 else 120 + (sin(AnimClock.ms(now) / 90f) * 40).toInt()
         paint.shader = RadialGradient(cx, cy + s * 0.62f, s * 0.3f,
             intArrayOf(withAlpha(eye, jet), withAlpha(eye, 0)), null, Shader.TileMode.CLAMP)
         c.drawCircle(cx, cy + s * 0.62f, s * 0.3f, paint)
@@ -252,29 +252,29 @@ class Robot {
         stroke.color = shade
         stroke.strokeWidth = s * 0.09f
         val swing = when {
-            walking -> sin(now / 160f) * 20f
+            walking -> sin(AnimClock.ms(now) / 160f) * 20f
             happy -> 70f
             sleeping -> -10f
-            else -> sin(now / 700f) * 6f
+            else -> sin(AnimClock.ms(now) / 700f) * 6f
         }
         arm(c, cx - s * 0.42f, cy + s * 0.12f, -1f, if (walking) -swing else swing, s)
-        arm(c, cx + s * 0.42f, cy + s * 0.12f, 1f, if (waving) 140f + sin(now / 90f) * 25f else swing, s)
+        arm(c, cx + s * 0.42f, cy + s * 0.12f, 1f, if (waving) 140f + sin(AnimClock.ms(now) / 90f) * 25f else swing, s)
 
         // body
         paint.color = shade
         rect.set(cx - s * 0.4f, cy - s * 0.02f, cx + s * 0.4f, cy + s * 0.55f)
         c.drawRoundRect(rect, s * 0.18f, s * 0.18f, paint)
         // chest light
-        val beat = if (sleeping) 0.3f else 0.6f + 0.4f * sin(now / 300f)
+        val beat = if (sleeping) 0.3f else 0.6f + 0.4f * sin(AnimClock.ms(now) / 300f)
         paint.color = withAlpha(eye, (255 * beat).toInt())
         c.drawCircle(cx, cy + s * 0.27f, s * 0.07f, paint)
 
         // antenna
         stroke.color = shade
         stroke.strokeWidth = s * 0.04f
-        val antSway = sin(now / 500f) * s * 0.04f
+        val antSway = sin(AnimClock.ms(now) / 500f) * s * 0.04f
         c.drawLine(cx, cy - s * 0.6f, cx + antSway, cy - s * 0.82f, stroke)
-        val ballA = if (sleeping) 90 else (180 + 75 * sin(now / 250f)).toInt()
+        val ballA = if (sleeping) 90 else (180 + 75 * sin(AnimClock.ms(now) / 250f)).toInt()
         paint.shader = RadialGradient(cx + antSway, cy - s * 0.86f, s * 0.16f,
             intArrayOf(withAlpha(0xFFFF5A5F.toInt(), ballA), withAlpha(0xFFFF5A5F.toInt(), 0)), null, Shader.TileMode.CLAMP)
         c.drawCircle(cx + antSway, cy - s * 0.86f, s * 0.16f, paint)
