@@ -22,8 +22,11 @@ jobs:
       - name: Download face model
         run: |
           mkdir -p app/src/main/assets
+          REPO=shubham0204/OnDevice-Face-Recognition-Android
           for b in main master; do
-            curl -fsSL -o app/src/main/assets/facenet.tflite "https://raw.githubusercontent.com/shubham0204/OnDevice-Face-Recognition-Android/$b/app/src/main/assets/facenet.tflite" && break
+            P=$(curl -fsSL "https://api.github.com/repos/$REPO/git/trees/$b?recursive=1" | grep -o '"path": *"[^"]*facenet\.tflite"' | head -1 | sed 's/.*"path": *"//; s/"$//')
+            echo "branch $b -> $P"
+            if [ -n "$P" ]; then curl -fsSL -o app/src/main/assets/facenet.tflite "https://raw.githubusercontent.com/$REPO/$b/$P" && break; fi
           done
           ls -la app/src/main/assets || true
 
