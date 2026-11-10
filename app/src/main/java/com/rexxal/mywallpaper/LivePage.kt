@@ -110,7 +110,7 @@ class LivePage(private val a: MainActivity) {
         val cityRow = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL }
         val cityIn = android.widget.EditText(c).apply {
             setText(cfg.city); hint = "e.g. Jaipur"; setTextColor(Ui.TEXT); setHintTextColor(Ui.MUTED); textSize = 15f; isSingleLine = true
-            background = Ui.rounded(c, Ui.SURFACE2, 12); setPadding(dp(12), dp(9), dp(12), dp(9))
+            background = Ui.outlined(c, Ui.SURFACE, Ui.RULE, 12, 1f); setPadding(dp(12), dp(9), dp(12), dp(9))
         }
         val wxStatus = Ui.text(c, p.getString("wx_place", null)?.let { "Now in $it: ${p.getString("wx_now", "?")}" } ?: "", 12f, Ui.MUTED)
         cityRow.addView(cityIn, LinearLayout.LayoutParams(0, Ui.WRAP, 1f))

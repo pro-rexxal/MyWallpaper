@@ -141,7 +141,7 @@ class JarvisPage(private val a: MainActivity) {
     }
 
     private fun input(v: String, set: (String) -> Unit) = android.widget.EditText(c).apply {
-        setText(v); setTextColor(Ui.TEXT); textSize = 15f; background = Ui.rounded(c, Ui.SURFACE2, 12); setPadding(dp(12), dp(10), dp(12), dp(10))
+        setText(v); setTextColor(Ui.TEXT); textSize = 15f; background = Ui.outlined(c, Ui.SURFACE, Ui.RULE, 12, 1f); setPadding(dp(12), dp(10), dp(12), dp(10))
         addTextChangedListener(object : android.text.TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, d: Int) {}
             override fun onTextChanged(s: CharSequence?, a: Int, b: Int, d: Int) {}

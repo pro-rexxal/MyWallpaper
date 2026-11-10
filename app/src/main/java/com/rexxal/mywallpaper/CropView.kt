@@ -26,14 +26,14 @@ class CropView(context: Context) : View(context) {
     private val corner get() = 16f * density
 
     private val bitmapPaint = Paint(Paint.FILTER_BITMAP_FLAG)
-    private val emptyPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF1C1E25.toInt() }
+    private val emptyPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Ui.SURFACE2 }
     private val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
-        strokeWidth = 1.5f * density
-        color = 0x40FFFFFF
+        strokeWidth = 2f * density
+        color = Ui.TEXT
     }
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = 0xFF8A8D98.toInt()
+        color = Ui.MUTED
         textSize = 15f * density
         textAlign = Paint.Align.CENTER
     }

@@ -115,8 +115,8 @@ class CreatorPage(private val a: MainActivity) {
             text = label
             textSize = 13f
             setPadding(dp(14), dp(7), dp(14), dp(7))
-            background = Ui.rounded(c, if (on) Ui.ACCENT else Ui.SURFACE2)
-            setTextColor(if (on) 0xFFFFFFFF.toInt() else Ui.TEXT)
+            background = Ui.outlined(c, if (on) Ui.ACCENT else Ui.SURFACE, Ui.ACCENT, 999, 1f)
+            setTextColor(if (on) Ui.ON_ACCENT else Ui.TEXT); typeface = Ui.sansMed
             setOnClickListener { f() }
         }
         val lp = { LinearLayout.LayoutParams(Ui.WRAP, Ui.WRAP).apply { rightMargin = dp(8) } }
@@ -192,7 +192,7 @@ class CreatorPage(private val a: MainActivity) {
             setTextColor(Ui.TEXT)
             setHintTextColor(Ui.MUTED)
             textSize = 15f
-            background = Ui.rounded(c, Ui.SURFACE2, 12)
+            background = Ui.outlined(c, Ui.SURFACE, Ui.RULE, 12, 1f)
             setPadding(dp(12), dp(10), dp(12), dp(10))
             inputType = if (multi) InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE else InputType.TYPE_CLASS_TEXT
             addTextChangedListener(object : TextWatcher {

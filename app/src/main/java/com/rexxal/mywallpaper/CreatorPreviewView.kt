@@ -22,8 +22,8 @@ class CreatorPreviewView(context: Context) : View(context) {
     private val frame = RectF()
     private val clip = Path()
     private val bounds = mutableListOf<RectF>()
-    private val border = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 1.5f * density; color = 0x40FFFFFF }
-    private val selP = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 1.5f * density; color = 0xCC7C5CFF.toInt() }
+    private val border = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 2f * density; color = Ui.TEXT }
+    private val selP = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 2f * density; color = 0xCC7C5CFF.toInt() }
     private val stageP = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x99FFFFFF.toInt(); textSize = 11f * density; textAlign = Paint.Align.CENTER }
     private var dragging = -1
     private var downX = 0f

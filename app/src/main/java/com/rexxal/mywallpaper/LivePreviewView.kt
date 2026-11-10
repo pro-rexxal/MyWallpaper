@@ -23,8 +23,8 @@ class LivePreviewView(context: Context) : View(context) {
     private val clip = Path()
     private val border = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
-        strokeWidth = 1.5f * density
-        color = 0x40FFFFFF
+        strokeWidth = 2f * density
+        color = Ui.TEXT
     }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
