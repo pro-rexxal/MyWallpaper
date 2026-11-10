@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.os.Handler
 import android.os.Looper
+import android.view.Choreographer
 import android.service.wallpaper.WallpaperService
 import android.view.MotionEvent
 import android.view.SurfaceHolder
@@ -29,6 +30,13 @@ class ClockWallpaperService : WallpaperService() {
         private var downY = 0f
         private var dragging = false
         private val drawRunnable = Runnable { drawFrame() }
+        private val frameCallback = Choreographer.FrameCallback { drawFrame() }
+        private var hardware = true
+
+        private fun stopFrames() {
+            handler.removeCallbacks(drawRunnable)
+            Choreographer.getInstance().removeFrameCallback(frameCallback)
+        }
 
         override fun onCreate(surfaceHolder: SurfaceHolder) {
             super.onCreate(surfaceHolder)
@@ -39,7 +47,7 @@ class ClockWallpaperService : WallpaperService() {
 
         override fun onDestroy() {
             prefs.unregisterOnSharedPreferenceChangeListener(this)
-            handler.removeCallbacks(drawRunnable)
+            stopFrames()
             super.onDestroy()
         }
 
@@ -48,7 +56,7 @@ class ClockWallpaperService : WallpaperService() {
             if (v) {
                 robot.onReturn(System.currentTimeMillis())
                 drawFrame()
-            } else handler.removeCallbacks(drawRunnable)
+            } else stopFrames()
         }
 
         override fun onSurfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
@@ -76,7 +84,7 @@ class ClockWallpaperService : WallpaperService() {
 
         override fun onSurfaceDestroyed(holder: SurfaceHolder) {
             visible = false
-            handler.removeCallbacks(drawRunnable)
+            stopFrames()
             super.onSurfaceDestroyed(holder)
         }
 
@@ -98,11 +106,13 @@ class ClockWallpaperService : WallpaperService() {
         }
 
         private fun drawFrame() {
-            handler.removeCallbacks(drawRunnable)
+            stopFrames()
             val holder = surfaceHolder
             var canvas: Canvas? = null
             try {
-                canvas = holder.lockCanvas()
+                canvas = if (hardware) {
+                    try { holder.lockHardwareCanvas() } catch (e: Exception) { hardware = false; holder.lockCanvas() }
+                } else holder.lockCanvas()
                 if (canvas != null) {
                     LiveRenderer.draw(canvas, canvas.width, canvas.height, System.currentTimeMillis(), cfg, photo, robot)
                 }
@@ -117,7 +127,9 @@ class ClockWallpaperService : WallpaperService() {
                 }
             }
             if (visible) {
-                handler.postDelayed(drawRunnable, LiveRenderer.nextDelay(cfg, System.currentTimeMillis()))
+                val delay = LiveRenderer.nextDelay(cfg, System.currentTimeMillis())
+                if (delay <= 40L) Choreographer.getInstance().postFrameCallback(frameCallback)
+                else handler.postDelayed(drawRunnable, delay)
             }
         }
     }

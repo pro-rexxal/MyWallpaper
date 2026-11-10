@@ -9,6 +9,7 @@ import android.content.SharedPreferences
 import android.graphics.Canvas
 import android.os.Handler
 import android.os.Looper
+import android.view.Choreographer
 import android.service.wallpaper.WallpaperService
 import android.view.SurfaceHolder
 
@@ -29,17 +30,21 @@ class CreatorWallpaperService : WallpaperService() {
         private val cache = CreatorRenderer.BgCache()
         private var visible = false
         private val drawRunnable = Runnable { drawFrame() }
+        private val frameCallback = Choreographer.FrameCallback { drawFrame() }
+        private var pendingStage = -1
+        private var hardware = true
         private val keyguard = ctx.getSystemService(KeyguardManager::class.java)
 
         private val screenReceiver = object : BroadcastReceiver() {
             override fun onReceive(c: Context, i: Intent) {
                 val now = System.currentTimeMillis()
                 when (i.action) {
-                    Intent.ACTION_SCREEN_OFF -> state.go(CreatorState.OFF, design, now, instant = true)
-                    Intent.ACTION_SCREEN_ON -> state.go(if (isLocked()) CreatorState.LOCK else CreatorState.HOME, design, now)
-                    Intent.ACTION_USER_PRESENT -> state.go(CreatorState.HOME, design, now)
+                    Intent.ACTION_SCREEN_OFF -> { pendingStage = -1; state.go(CreatorState.OFF, design, now, instant = true) }
+                    // start the wake animation on the first frame we can actually show
+                    Intent.ACTION_SCREEN_ON -> { pendingStage = if (isLocked()) CreatorState.LOCK else CreatorState.HOME; if (visible) applyPending() }
+                    Intent.ACTION_USER_PRESENT -> { pendingStage = -1; state.go(CreatorState.HOME, design, now) }
                 }
-                drawFrame()
+                if (visible) drawFrame()
             }
         }
 
@@ -63,7 +68,7 @@ class CreatorWallpaperService : WallpaperService() {
         override fun onDestroy() {
             prefs.unregisterOnSharedPreferenceChangeListener(this)
             try { ctx.unregisterReceiver(screenReceiver) } catch (e: Exception) { }
-            handler.removeCallbacks(drawRunnable)
+            stopFrames()
             super.onDestroy()
         }
 
@@ -72,15 +77,29 @@ class CreatorWallpaperService : WallpaperService() {
             CreatorRenderer.loadBg(ctx, cache, prefs.getLong("creator_bg_ver", 0L), sw)
         }
 
+        private fun applyPending() {
+            if (pendingStage < 0) return
+            state.go(pendingStage, design, System.currentTimeMillis())
+            pendingStage = -1
+        }
+
+        private fun stopFrames() {
+            handler.removeCallbacks(drawRunnable)
+            Choreographer.getInstance().removeFrameCallback(frameCallback)
+        }
+
         override fun onVisibilityChanged(v: Boolean) {
             visible = v
-            if (v) {
+            if (v && pendingStage >= 0) {
+                applyPending()
+                drawFrame()
+            } else if (v) {
                 val now = System.currentTimeMillis()
                 val target = if (isPreview()) CreatorState.LOCK else if (isLocked()) CreatorState.LOCK else CreatorState.HOME
                 if (state.stage != target) state.go(target, design, now)
                 drawFrame()
             } else {
-                handler.removeCallbacks(drawRunnable)
+                stopFrames()
             }
         }
 
@@ -91,7 +110,7 @@ class CreatorWallpaperService : WallpaperService() {
 
         override fun onSurfaceDestroyed(holder: SurfaceHolder) {
             visible = false
-            handler.removeCallbacks(drawRunnable)
+            stopFrames()
             super.onSurfaceDestroyed(holder)
         }
 
@@ -105,12 +124,14 @@ class CreatorWallpaperService : WallpaperService() {
         }
 
         private fun drawFrame() {
-            handler.removeCallbacks(drawRunnable)
+            stopFrames()
             val holder = surfaceHolder
             var canvas: Canvas? = null
             val now = System.currentTimeMillis()
             try {
-                canvas = holder.lockCanvas()
+                canvas = if (hardware) {
+                    try { holder.lockHardwareCanvas() } catch (e: Exception) { hardware = false; holder.lockCanvas() }
+                } else holder.lockCanvas()
                 if (canvas != null) {
                     CreatorRenderer.draw(canvas, canvas.width.toFloat(), canvas.height.toFloat(), now, design, state, cache, null)
                 }
@@ -118,7 +139,10 @@ class CreatorWallpaperService : WallpaperService() {
             } finally {
                 if (canvas != null) try { holder.unlockCanvasAndPost(canvas) } catch (e: Exception) { }
             }
-            if (visible) handler.postDelayed(drawRunnable, CreatorRenderer.nextDelay(design, state, now))
+            if (visible) {
+                if (CreatorRenderer.needsFrames(design, state, now)) Choreographer.getInstance().postFrameCallback(frameCallback)
+                else handler.postDelayed(drawRunnable, CreatorRenderer.nextDelay(design, state, now))
+            }
         }
     }
 }

@@ -406,6 +406,27 @@ object CreatorRenderer {
         }
         val perLetter = anim && (style == A_TYPE || style == A_CASCADE || style == A_WAVE)
         val waveIdle = el.idle == I_WAVE
+        // Fast path: draw the finished layer from a cached image (effects rendered once).
+        val cacheable = !perLetter && !waveIdle && el.idle != I_SHIMMER && el.idle != I_BREATHE && el.idle != I_RAINBOW
+        if (cacheable) {
+            val cb = cachedLayer(el, lines, widths, blockW, blockH, lineH, size, now)
+            if (cb != null) {
+                layerP.colorFilter = null
+                layerP.alpha = (255 * alpha).toInt().coerceIn(0, 255)
+                c.drawBitmap(cb.bmp, -cb.ox, -cb.oy, layerP)
+                if (anim && style == A_GLITCH) {
+                    val off = size * 0.08f * (1 - p)
+                    layerP.alpha = (255 * alpha * 0.5f * (1 - p)).toInt().coerceIn(0, 255)
+                    layerP.colorFilter = tintRed
+                    c.drawBitmap(cb.bmp, -cb.ox - off * (Math.random() * 2).toFloat(), -cb.oy, layerP)
+                    layerP.colorFilter = tintCyan
+                    c.drawBitmap(cb.bmp, -cb.ox + off * (Math.random() * 2).toFloat(), -cb.oy, layerP)
+                    layerP.colorFilter = null
+                }
+                c.restore()
+                return
+            }
+        }
         lines.forEachIndexed { i, line ->
             val lw = widths[i]
             val lx = when (el.align) { 0 -> -blockW / 2; 2 -> blockW / 2 - lw; else -> -lw / 2 }
@@ -446,6 +467,50 @@ object CreatorRenderer {
             }
         }
         c.restore()
+    }
+
+    // ---------------- layer image cache ----------------
+    private class Cached(val key: Int, val bmp: Bitmap, val ox: Float, val oy: Float)
+    private val layerCache = java.util.WeakHashMap<TextEl, Cached>()
+    private val layerP = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
+    private val tintRed = android.graphics.PorterDuffColorFilter(0xFFFF2D6F.toInt(), android.graphics.PorterDuff.Mode.SRC_IN)
+    private val tintCyan = android.graphics.PorterDuffColorFilter(0xFF2DE2FF.toInt(), android.graphics.PorterDuff.Mode.SRC_IN)
+
+    private fun styleKey(el: TextEl, text: String, size: Float): Int {
+        var h = text.hashCode()
+        val vals = intArrayOf(
+            size.toBits(), el.font, if (el.bold) 1 else 0, if (el.italic) 1 else 0, el.customFont?.hashCode() ?: 0,
+            el.spacing, el.align, el.color, if (el.gradient) 1 else 0, el.color2, if (el.shadow) 1 else 0, el.shadowColor,
+            el.shadowBlur, el.shadowDy, el.depth, el.depthAngle, el.depthColor, el.outline, el.outlineColor, el.glow, el.glowColor
+        )
+        for (v in vals) h = h * 31 + v
+        return h
+    }
+
+    private fun cachedLayer(el: TextEl, lines: List<String>, widths: List<Float>, blockW: Float, blockH: Float, lineH: Float, size: Float, now: Long): Cached? {
+        val key = styleKey(el, lines.joinToString("\n"), size)
+        layerCache[el]?.let { if (it.key == key) return it }
+        val pad = size * (0.5f + el.glow / 100f * 0.7f) + el.depth * size * 0.013f +
+            (if (el.shadow) (el.shadowBlur + el.shadowDy) * size / 100f * 1.5f else 0f) + el.outline * size * 0.014f
+        val bw = (blockW + pad * 2).toInt() + 2
+        val bh = (blockH + pad * 2).toInt() + 2
+        if (bw <= 2 || bh <= 2 || bw.toLong() * bh > 6_000_000L) return null
+        return try {
+            val bmp = Bitmap.createBitmap(bw, bh, Bitmap.Config.ARGB_8888)
+            val cc = Canvas(bmp)
+            val ox = bw / 2f
+            val oy = bh / 2f
+            cc.translate(ox, oy)
+            lines.forEachIndexed { i, line ->
+                val lw = widths[i]
+                val lx = when (el.align) { 0 -> -blockW / 2; 2 -> blockW / 2 - lw; else -> -lw / 2 }
+                val ly = -blockH / 2 + lineH * i + size * 0.88f
+                styled(cc, line, lx, ly, el, size, 1f, now, blockW)
+            }
+            Cached(key, bmp, ox, oy).also { layerCache[el] = it }
+        } catch (e: Throwable) {
+            null
+        }
     }
 
     fun needsFrames(d: Design, st: CreatorState, now: Long): Boolean =
