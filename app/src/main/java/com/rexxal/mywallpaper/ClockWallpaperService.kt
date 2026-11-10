@@ -56,7 +56,7 @@ class ClockWallpaperService : WallpaperService() {
             Choreographer.getInstance().removeFrameCallback(frameCallback)
         }
 
-        private fun scheduleFrame() = Choreographer.getInstance().postFrameCallback(frameCallback)
+        private fun scheduleFrame() { Choreographer.getInstance().postFrameCallback(frameCallback) }
 
         override fun onVisibilityChanged(v: Boolean) {
             visible = v
