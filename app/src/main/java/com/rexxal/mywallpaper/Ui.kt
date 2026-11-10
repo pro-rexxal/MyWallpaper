@@ -62,9 +62,37 @@ object Ui {
             if (bold) typeface = Typeface.DEFAULT_BOLD
         }
 
-    fun section(c: Context, s: String) = text(c, s.uppercase(), 11f, MUTED, true).apply {
+    /** Section title. Tap it to fold or unfold the card right after it. */
+    fun section(c: Context, s: String) = text(c, s.uppercase() + "   ▾", 11f, MUTED, true).apply {
         letterSpacing = 0.08f
-        setPadding(dp(c, 4), dp(c, 18), 0, dp(c, 8))
+        setPadding(dp(c, 4), dp(c, 18), 0, dp(c, 10))
+        val title = s.uppercase()
+        setOnClickListener {
+            val parent = parent as? android.view.ViewGroup ?: return@setOnClickListener
+            val next = parent.getChildAt(parent.indexOfChild(this) + 1) ?: return@setOnClickListener
+            val open = next.visibility != View.VISIBLE
+            next.visibility = if (open) View.VISIBLE else View.GONE
+            text = title + if (open) "   ▾" else "   ▸"
+        }
+    }
+
+    /** Preview area height: small or large share of the screen. */
+    fun previewHeight(c: Context, large: Boolean): Int {
+        val h = c.resources.displayMetrics.heightPixels
+        return (h * if (large) 0.52f else 0.34f).toInt()
+    }
+
+    /** Small button that switches a preview between small and large. */
+    fun previewToggle(c: Context, target: View): TextView {
+        var large = false
+        return pill(c, "⤢  Bigger preview") {}.apply {
+            setOnClickListener {
+                large = !large
+                target.layoutParams = target.layoutParams.apply { height = previewHeight(c, large) }
+                target.requestLayout()
+                text = if (large) "⤡  Smaller preview" else "⤢  Bigger preview"
+            }
+        }
     }
 
     fun card(c: Context) = LinearLayout(c).apply {
@@ -89,7 +117,7 @@ object Ui {
         textSize = 13f
         setTextColor(TEXT)
         background = rounded(c, SURFACE2)
-        setPadding(dp(c, 14), dp(c, 8), dp(c, 14), dp(c, 8))
+        setPadding(dp(c, 16), dp(c, 10), dp(c, 16), dp(c, 10))
         setOnClickListener { onClick() }
     }
 
@@ -100,10 +128,12 @@ object Ui {
         val row = LinearLayout(c).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, dp(c, 3), 0, dp(c, 3))
+            setPadding(0, dp(c, 7), 0, dp(c, 7))
+            minimumHeight = dp(c, 44)
         }
         val valueTv = text(c, show(value), 12f, MUTED).apply { gravity = Gravity.END }
         val seek = SeekBar(c)
+        seek.setPadding(dp(c, 14), dp(c, 10), dp(c, 14), dp(c, 10))
         seek.max = maxValue
         seek.progress = value
         seek.progressTintList = ColorStateList.valueOf(ACCENT)
@@ -133,7 +163,8 @@ object Ui {
         val states = arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf())
         sw.thumbTintList = ColorStateList(states, intArrayOf(ACCENT, 0xFFB0B3BD.toInt()))
         sw.trackTintList = ColorStateList(states, intArrayOf(ACCENT_SOFT, TRACK))
-        sw.setPadding(0, dp(c, 8), 0, dp(c, 8))
+        sw.setPadding(0, dp(c, 10), 0, dp(c, 10))
+        sw.minHeight = dp(c, 48)
         sw.setOnCheckedChangeListener { _, b -> onChange(b) }
         parent.addView(sw, LinearLayout.LayoutParams(MATCH, WRAP))
         return sw

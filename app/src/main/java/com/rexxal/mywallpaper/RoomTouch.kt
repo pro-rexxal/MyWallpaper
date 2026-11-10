@@ -56,19 +56,26 @@ class RoomTouch(private val world: RoomWorld) {
     }
 }
 
-/** Reads the phone's battery level and charging state (cheap; called about once a second). */
-class BatteryReader(c: Context) {
-    private val bm = c.getSystemService(BatteryManager::class.java)
+/** Reads the phone's battery level and whether it's plugged in (cheap; called about once a second). */
+class BatteryReader(private val c: Context) {
     private var last = 0L
     var level = 1f; private set
     var charging = false; private set
 
     fun poll(now: Long): Boolean {
-        if (now - last < 1000L) return false
+        if (now - last < 800L) return false
         last = now
         try {
-            level = (bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY) / 100f).coerceIn(0.01f, 1f)
-            charging = bm.isCharging
+            // the sticky battery broadcast is the most reliable source on every phone brand
+            val i = c.applicationContext.registerReceiver(null, android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED))
+            if (i != null) {
+                val lv = i.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+                val sc = i.getIntExtra(BatteryManager.EXTRA_SCALE, 100)
+                if (lv >= 0 && sc > 0) level = (lv.toFloat() / sc).coerceIn(0.01f, 1f)
+                val plugged = i.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0)
+                val status = i.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
+                charging = plugged != 0 || status == BatteryManager.STATUS_CHARGING || status == BatteryManager.STATUS_FULL
+            }
         } catch (e: Exception) { }
         return true
     }

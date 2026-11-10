@@ -43,7 +43,8 @@ class LivePage(private val a: MainActivity) {
             aspect = a.screenW.toFloat() / a.screenH
             cfg = this@LivePage.cfg.copy()
         }
-        root.addView(preview, LinearLayout.LayoutParams(Ui.MATCH, 0, 1f))
+        root.addView(preview, LinearLayout.LayoutParams(Ui.MATCH, Ui.previewHeight(c, false)))
+        root.addView(Ui.previewToggle(c, preview), LinearLayout.LayoutParams(Ui.WRAP, Ui.WRAP).apply { gravity = android.view.Gravity.CENTER_HORIZONTAL; topMargin = dp(4) })
 
         val col = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL }
 
@@ -191,7 +192,7 @@ class LivePage(private val a: MainActivity) {
                 "or change the lock screen clock style in Realme's settings.",
             12f, Ui.MUTED).apply { setPadding(dp(4), dp(14), dp(4), dp(8)) })
 
-        root.addView(ScrollView(c).apply { addView(col) }, LinearLayout.LayoutParams(Ui.MATCH, dp(230)))
+        root.addView(ScrollView(c).apply { addView(col) }, LinearLayout.LayoutParams(Ui.MATCH, 0, 1f))
 
         root.addView(Ui.button(c, "Set Live Wallpaper", true) { setLive() },
             LinearLayout.LayoutParams(Ui.MATCH, Ui.WRAP).apply { topMargin = dp(8) })

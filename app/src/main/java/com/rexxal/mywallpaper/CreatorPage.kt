@@ -44,7 +44,7 @@ class CreatorPage(private val a: MainActivity) {
             onMoved = { save() }
         }
         preview.state.go(CreatorState.LOCK, design, System.currentTimeMillis(), instant = true)
-        root.addView(preview, LinearLayout.LayoutParams(Ui.MATCH, 0, 1f))
+        root.addView(preview, LinearLayout.LayoutParams(Ui.MATCH, Ui.previewHeight(c, false)))
 
         // stage controls
         val stages = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
@@ -56,6 +56,7 @@ class CreatorPage(private val a: MainActivity) {
         ).forEach { (l, f) ->
             stages.addView(Ui.pill(c, l, f), LinearLayout.LayoutParams(Ui.WRAP, Ui.WRAP).apply { rightMargin = dp(6) })
         }
+        stages.addView(Ui.previewToggle(c, preview))
         root.addView(HorizontalScrollView(c).apply { isHorizontalScrollBarEnabled = false; addView(stages); setPadding(0, dp(6), 0, dp(4)) })
 
         // layers
@@ -64,7 +65,7 @@ class CreatorPage(private val a: MainActivity) {
 
         editor = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL; setPadding(0, 0, 0, dp(12)) }
         editorScroll = ScrollView(c).apply { addView(editor) }
-        root.addView(editorScroll, LinearLayout.LayoutParams(Ui.MATCH, dp(250)))
+        root.addView(editorScroll, LinearLayout.LayoutParams(Ui.MATCH, 0, 1f))
 
         root.addView(Ui.button(c, "Set as Live Wallpaper", true) { setLive() },
             LinearLayout.LayoutParams(Ui.MATCH, Ui.WRAP).apply { topMargin = dp(8) })

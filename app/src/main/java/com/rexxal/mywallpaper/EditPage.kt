@@ -37,7 +37,8 @@ class EditPage(private val a: MainActivity) {
             onCropChanged = { refreshPreview() }
             setOnClickListener { if (source == null) a.pickImage() }
         }
-        root.addView(cropView, LinearLayout.LayoutParams(Ui.MATCH, 0, 1f))
+        root.addView(cropView, LinearLayout.LayoutParams(Ui.MATCH, Ui.previewHeight(c, false)))
+        root.addView(Ui.previewToggle(c, cropView), LinearLayout.LayoutParams(Ui.WRAP, Ui.WRAP).apply { gravity = Gravity.CENTER_HORIZONTAL; topMargin = dp(4) })
         root.addView(Ui.text(c, "Drag to move  ·  Pinch to zoom", 12f, Ui.MUTED).apply {
             gravity = Gravity.CENTER
             setPadding(0, dp(4), 0, dp(4))
@@ -74,7 +75,7 @@ class EditPage(private val a: MainActivity) {
         addSlider(controls, "Blur", 100, 0, { "$it" }) { settings.blur = it }
         addSlider(controls, "Dim", 85, 0, { "$it%" }) { settings.dim = it / 100f }
         addSlider(controls, "Vignette", 100, 0, { "$it" }) { settings.vignette = it / 100f }
-        root.addView(ScrollView(c).apply { addView(controls) }, LinearLayout.LayoutParams(Ui.MATCH, dp(150)))
+        root.addView(ScrollView(c).apply { addView(controls) }, LinearLayout.LayoutParams(Ui.MATCH, 0, 1f))
 
         val bottom = LinearLayout(c).apply {
             orientation = LinearLayout.HORIZONTAL
