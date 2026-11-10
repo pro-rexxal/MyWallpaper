@@ -1,5 +1,9 @@
 package com.rexxal.mywallpaper
 
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.SharedPreferences
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -32,8 +36,18 @@ class ClockWallpaperService : WallpaperService() {
         private val drawRunnable = Runnable { drawFrame() }
 
 
+        private val screenReceiver = object : BroadcastReceiver() {
+            override fun onReceive(c: Context, i: Intent) {
+                val now = System.currentTimeMillis()
+                when (i.action) { Intent.ACTION_SCREEN_ON -> world.onScreenOn(now); Intent.ACTION_USER_PRESENT -> world.onUnlock(now) }
+                if (visible) drawFrame()
+            }
+        }
+
         override fun onCreate(surfaceHolder: SurfaceHolder) {
             super.onCreate(surfaceHolder)
+            val f = IntentFilter().apply { addAction(Intent.ACTION_SCREEN_ON); addAction(Intent.ACTION_USER_PRESENT) }
+            try { if (android.os.Build.VERSION.SDK_INT >= 33) ctx.registerReceiver(screenReceiver, f, Context.RECEIVER_NOT_EXPORTED) else ctx.registerReceiver(screenReceiver, f) } catch (e: Exception) { }
             setTouchEventsEnabled(true)
             prefs.registerOnSharedPreferenceChangeListener(this)
             touch.onLightsChanged = { on -> cfg.lightsOn = on; prefs.edit().putBoolean("lv_lights", on).apply() }
@@ -43,6 +57,7 @@ class ClockWallpaperService : WallpaperService() {
 
         override fun onDestroy() {
             prefs.unregisterOnSharedPreferenceChangeListener(this)
+            try { ctx.unregisterReceiver(screenReceiver) } catch (e: Exception) { }
             stopFrames()
             super.onDestroy()
         }
@@ -57,7 +72,7 @@ class ClockWallpaperService : WallpaperService() {
             visible = v
             if (v) {
                 val now = System.currentTimeMillis()
-                if (!isPreview()) world.onReturn(now)
+                
                 if (cfg.winMode == 0 && cfg.weatherSel == 0) WeatherFetcher.refresh(ctx)
                 drawFrame()
             } else stopFrames()
@@ -80,6 +95,7 @@ class ClockWallpaperService : WallpaperService() {
         }
 
         override fun onSharedPreferenceChanged(p: SharedPreferences?, key: String?) {
+            if (key == "notif_time") { world.onNotification(prefs.getString("notif_app", "") ?: "", System.currentTimeMillis()); if (visible) drawFrame(); return }
             reload()
             if (visible) drawFrame()
         }

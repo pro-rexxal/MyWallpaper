@@ -201,6 +201,21 @@ class RoomWorld {
         val b = bot; wake(now, ""); b.waveUntil = now + 1600; val h = hour(now)
         say(when { h >= 5 && h < 12 -> "Good morning! ☀️"; h >= 12 && h < 17 -> "Good afternoon! 🌤"; h >= 17 && h < 21 -> "Good evening! 🌆"; else -> "Up late? Sleep soon 🌙" }, now)
     }
+    /** Screen just turned on (usually on the lock screen). */
+    fun onScreenOn(now: Long) {
+        val b = bot; wake(now, ""); b.waveUntil = now + 2000; b.squashStart = now; val h = hour(now)
+        say(when { h >= 5 && h < 12 -> listOf("Good morning! ☀️", "Rise and shine! 🌅").random(); h >= 12 && h < 17 -> listOf("Hey there! 👋", "Hi again! 😄").random()
+            h >= 17 && h < 22 -> listOf("Good evening! 🌆", "Hey! 👋").random(); else -> listOf("It's late… sleep soon 😴", "Can't sleep? 🌙").random() }, now, 3000)
+    }
+    /** Phone unlocked. */
+    fun onUnlock(now: Long) { val b = bot; if (!b.sleeping) { b.happyUntil = now + 1200; say(listOf("Welcome back! 😊", "Yay, you're here! 🎉", "Let's go! 🚀").random(), now, 2200) } }
+    /** A notification arrived. */
+    fun onNotification(app: String, now: Long) {
+        val b = bot; wake(now, ""); b.surpriseUntil = now + 1200; b.squashStart = now
+        if (!b.air && !b.carried) { b.air = true; b.vy = -1.1f }
+        burst(P_SPARK, b.x, b.y - .15f, 6); say(if (app.isBlank()) "New notification! 📩" else "📩 $app", now, 3000)
+    }
+
     /** Phone unlocked / wallpaper shown again: greet if you've been away a while. */
     fun onReturn(now: Long) { if (now - bot.lastInteract > 60_000L) { bot.lastInteract = now; unlock(now) } }
 

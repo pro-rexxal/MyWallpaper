@@ -73,6 +73,14 @@ class LivePage(private val a: MainActivity) {
         bot.addView(Ui.colors(c, cfg.robotColor) { cfg.robotColor = it; changed() })
         col.addView(bot)
 
+        bot.addView(Ui.label(c, "Lock screen: he waves and greets you when the screen turns on, and says welcome back when you unlock."))
+        val notifBtn = Ui.button(c, if (NotifyListener.enabled(c)) "✓ Reacts to notifications" else "Let him react to notifications", false) {
+            try { a.startActivity(android.content.Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS")) } catch (e: Exception) { a.toast("Open Settings → Notifications → Notification access") }
+            a.toast("Turn on \"MyWallpaper robot\"")
+        }
+        bot.addView(notifBtn, LinearLayout.LayoutParams(Ui.MATCH, Ui.WRAP).apply { topMargin = dp(8) })
+        bot.addView(Ui.label(c, "He only sees which app sent it (to say its name). Nothing is saved or sent anywhere."))
+
         // Window & room
         col.addView(Ui.section(c, "Window & room"))
         val room = Ui.card(c)
