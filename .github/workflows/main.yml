@@ -22,11 +22,15 @@ jobs:
       - name: Download face model
         run: |
           mkdir -p app/src/main/assets
-          REPO=shubham0204/OnDevice-Face-Recognition-Android
-          for b in main master; do
-            P=$(curl -fsSL "https://api.github.com/repos/$REPO/git/trees/$b?recursive=1" | grep -o '"path": *"[^"]*facenet\.tflite"' | head -1 | sed 's/.*"path": *"//; s/"$//')
-            echo "branch $b -> $P"
-            if [ -n "$P" ]; then curl -fsSL -o app/src/main/assets/facenet.tflite "https://raw.githubusercontent.com/$REPO/$b/$P" && break; fi
+          for REPO in shubham0204/FaceRecognition_With_FaceNet_Android atharvakale31/Real-Time_Face_Recognition_Android syaringan357/Android-MobileFaceNet-MTCNN-FaceAntiSpoofing estebanuri/face_recognition shubham0204/OnDevice-Face-Recognition-Android; do
+            for b in master main; do
+              P=$(curl -fsSL "https://api.github.com/repos/$REPO/git/trees/$b?recursive=1" 2>/dev/null | grep -io '"path": *"[^"]*\(facenet\|face_net\|mobilefacenet\)[^"]*\.tflite"' | grep -iv "512\|quant" | head -1 | sed 's/.*"path": *"//; s/"$//')
+              if [ -n "$P" ]; then
+                echo "found $REPO@$b:$P"
+                curl -fsSL -o app/src/main/assets/facenet.tflite "https://raw.githubusercontent.com/$REPO/$b/$P" && [ $(stat -c%s app/src/main/assets/facenet.tflite) -gt 100000 ] && break 2
+                rm -f app/src/main/assets/facenet.tflite
+              fi
+            done
           done
           ls -la app/src/main/assets || true
 

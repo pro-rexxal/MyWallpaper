@@ -26,7 +26,7 @@ import kotlin.math.sqrt
  */
 object FaceMatcher {
     private const val KEY = "jv_owner_faces"
-    private const val SIZE = 160
+    private var size = 160
     private var interp: Interpreter? = null
     private var triedModel = false
 
@@ -45,7 +45,10 @@ object FaceMatcher {
         interp = try {
             val fd = c.assets.openFd("facenet.tflite")
             val buf = FileInputStream(fd.fileDescriptor).channel.map(FileChannel.MapMode.READ_ONLY, fd.startOffset, fd.declaredLength)
-            Interpreter(buf, Interpreter.Options().setNumThreads(2))
+            Interpreter(buf, Interpreter.Options().setNumThreads(2)).also { m ->
+                val shp = m.getInputTensor(0).shape()          // [1, H, W, 3]
+                if (shp.size == 4) size = shp[1]
+            }
         } catch (e: Throwable) { null }
         return interp
     }
@@ -78,17 +81,25 @@ object FaceMatcher {
         if (w < 20 || h < 20) return null
         val rot = Matrix().apply { postRotate(-face.headEulerAngleZ, w / 2f, h / 2f) }
         val crop = Bitmap.createBitmap(bmp, x0, y0, w, h, rot, true)
-        val face160 = Bitmap.createScaledBitmap(crop, SIZE, SIZE, true)
-        val px = IntArray(SIZE * SIZE); face160.getPixels(px, 0, SIZE, 0, 0, SIZE, SIZE)
-        // per-image standardization
-        var mean = 0.0; for (p in px) mean += ((p shr 16 and 255) + (p shr 8 and 255) + (p and 255)) / 3.0; mean /= px.size
-        var vv = 0.0; for (p in px) { for (ch in intArrayOf(p shr 16 and 255, p shr 8 and 255, p and 255)) { val d = ch - mean; vv += d * d } }
-        val std = max(sqrt(vv / (px.size * 3)), 1.0 / sqrt(px.size * 3.0))
-        val input = ByteBuffer.allocateDirect(SIZE * SIZE * 3 * 4).order(ByteOrder.nativeOrder())
+        val face160 = Bitmap.createScaledBitmap(crop, size, size, true)
+        val px = IntArray(size * size); face160.getPixels(px, 0, size, 0, 0, size, size)
+        // FaceNet (160px) uses per-image standardization; MobileFaceNet (112px) uses (x - 127.5) / 128
+        var mean = 127.5; var std = 128.0
+        if (size == 160) {
+            mean = 0.0; for (p in px) mean += ((p shr 16 and 255) + (p shr 8 and 255) + (p and 255)) / 3.0; mean /= px.size
+            var vv = 0.0; for (p in px) { for (ch in intArrayOf(p shr 16 and 255, p shr 8 and 255, p and 255)) { val d = ch - mean; vv += d * d } }
+            std = max(sqrt(vv / (px.size * 3)), 1.0 / sqrt(px.size * 3.0))
+        }
+        val input = ByteBuffer.allocateDirect(size * size * 3 * 4).order(ByteOrder.nativeOrder())
         for (p in px) { input.putFloat((((p shr 16 and 255) - mean) / std).toFloat()); input.putFloat((((p shr 8 and 255) - mean) / std).toFloat()); input.putFloat((((p and 255) - mean) / std).toFloat()) }
         input.rewind()
         val outSize = m.getOutputTensor(0).shape().last()
-        val out = Array(1) { FloatArray(outSize) }
+        val out = Array(m.getInputTensor(0).shape()[0].coerceAtLeast(1)) { FloatArray(outSize) }
+        if (out.size > 1) {   // models that expect a batch of 2: feed the same face twice
+            val two = ByteBuffer.allocateDirect(input.capacity() * out.size).order(ByteOrder.nativeOrder())
+            repeat(out.size) { input.rewind(); two.put(input) }; two.rewind()
+            m.run(two, out); return normalize(out[0])
+        }
         m.run(input, out)
         return normalize(out[0])
     }
@@ -115,7 +126,7 @@ object FaceMatcher {
         val owners = owners(c)
         if (owners.isEmpty()) return Result.Done(false, 0)
         val best = owners.maxOf { cosine(f, it) }
-        val threshold = if (usingModel(c)) 0.60f else 0.985f
+        val threshold = if (!usingModel(c)) 0.985f else if (size == 160) 0.60f else 0.55f
         val score = if (usingModel(c)) ((best + 1) / 2 * 100).toInt() else (best * 100).toInt()
         return Result.Done(best >= threshold, score.coerceIn(0, 99))
     }
