@@ -28,7 +28,8 @@ class CreatorPage(private val a: MainActivity) {
     private lateinit var preview: CreatorPreviewView
     private lateinit var layerRow: LinearLayout
     private lateinit var editor: LinearLayout
-    private lateinit var editorScroll: ScrollView
+    private lateinit var editorHost: android.widget.FrameLayout
+    private var editorTab = 0
     private var sel = 0          // -1 = background
 
     val view: LinearLayout = build()
@@ -63,9 +64,9 @@ class CreatorPage(private val a: MainActivity) {
         layerRow = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL }
         root.addView(HorizontalScrollView(c).apply { isHorizontalScrollBarEnabled = false; addView(layerRow); setPadding(0, dp(2), 0, dp(4)) })
 
-        editor = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL; setPadding(0, 0, 0, dp(12)) }
-        editorScroll = ScrollView(c).apply { addView(editor) }
-        root.addView(editorScroll, LinearLayout.LayoutParams(Ui.MATCH, 0, 1f))
+        editor = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL }
+        editorHost = android.widget.FrameLayout(c)
+        root.addView(editorHost, LinearLayout.LayoutParams(Ui.MATCH, 0, 1f))
 
         root.addView(Ui.button(c, "Set as Live Wallpaper", true) { setLive() },
             LinearLayout.LayoutParams(Ui.MATCH, Ui.WRAP).apply { topMargin = dp(8) })
@@ -156,7 +157,8 @@ class CreatorPage(private val a: MainActivity) {
     private fun buildEditor() {
         editor.removeAllViews()
         if (sel == -1) buildBg() else design.items.getOrNull(sel)?.let { buildEl(it, sel) }
-        editorScroll.scrollTo(0, 0)
+        editorHost.removeAllViews()
+        editorHost.addView(Ui.tabify(c, editor, editorTab) { editorTab = it })
     }
 
     private fun card(title: String): LinearLayout {

@@ -82,6 +82,17 @@ class LivePage(private val a: MainActivity) {
         bot.addView(notifBtn, LinearLayout.LayoutParams(Ui.MATCH, Ui.WRAP).apply { topMargin = dp(8) })
         bot.addView(Ui.label(c, "He only sees which app sent it (to say its name). Nothing is saved or sent anywhere."))
 
+        // Icons
+        col.addView(Ui.section(c, "Icons"))
+        val ic = Ui.card(c)
+        ic.addView(Ui.text(c, "Tell him where your app icons are and he'll sit on them, climb them, bump into them, and fall off when you swipe between home pages.", 13f, Ui.MUTED))
+        ic.addView(Ui.button(c, "🧱  Open icon map", true) { a.startActivity(android.content.Intent(c, IconMapActivity::class.java)) },
+            LinearLayout.LayoutParams(Ui.MATCH, Ui.WRAP).apply { topMargin = dp(10) })
+        ic.addView(Ui.text(c, "Tip: take a screenshot of each home page first, then add it in the icon map to line everything up.", 12f, Ui.MUTED).apply { setPadding(0, dp(8), 0, 0) })
+        val im = IconMap.load(p)
+        Ui.toggle(c, ic, "Robot plays with icons", im.enabled) { on -> IconMap.load(p).apply { enabled = on }.save(p) }
+        col.addView(ic)
+
         // Window & room
         col.addView(Ui.section(c, "Window & room"))
         val room = Ui.card(c)
@@ -192,7 +203,7 @@ class LivePage(private val a: MainActivity) {
                 "or change the lock screen clock style in Realme's settings.",
             12f, Ui.MUTED).apply { setPadding(dp(4), dp(14), dp(4), dp(8)) })
 
-        root.addView(ScrollView(c).apply { addView(col) }, LinearLayout.LayoutParams(Ui.MATCH, 0, 1f))
+        root.addView(Ui.tabify(c, col), LinearLayout.LayoutParams(Ui.MATCH, 0, 1f).apply { topMargin = dp(6) })
 
         root.addView(Ui.button(c, "Set Live Wallpaper", true) { setLive() },
             LinearLayout.LayoutParams(Ui.MATCH, Ui.WRAP).apply { topMargin = dp(8) })

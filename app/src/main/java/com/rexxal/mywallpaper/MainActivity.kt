@@ -32,11 +32,11 @@ class MainActivity : Activity() {
     private val tabs = mutableListOf<TextView>()
     private lateinit var subtitle: TextView
     private val subtitles = listOf(
-        "Built-in wallpapers · new every tap",
-        "Edit a photo and set it",
-        "Change wallpaper automatically",
-        "Live clock & date wallpaper",
-        "Design your own lock & home screen"
+        "Wallpapers · tap one to edit and set it",
+        "Photo · crop, filters and effects, then set",
+        "Auto · change wallpaper on a schedule",
+        "Robot · live wallpaper with your robot buddy",
+        "Creator · design your own lock & home screen"
     )
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -85,7 +85,7 @@ class MainActivity : Activity() {
             setBackgroundColor(Ui.SURFACE)
             setPadding(dp(12), dp(8), dp(12), dp(8))
         }
-        listOf("✨\nPacks", "🎨\nEdit", "🔄\nAuto", "🤖\nLive", "🧩\nCreator").forEachIndexed { i, label ->
+        listOf("✨\nWallpapers", "🎨\nPhoto", "🔄\nAuto", "🤖\nRobot", "🧩\nCreator").forEachIndexed { i, label ->
             val tv = TextView(this).apply {
                 text = label
                 gravity = Gravity.CENTER

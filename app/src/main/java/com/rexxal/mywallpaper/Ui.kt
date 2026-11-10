@@ -13,6 +13,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.SeekBar
 import android.widget.Switch
 import android.widget.TextView
@@ -27,6 +28,7 @@ object Ui {
     val TEXT = 0xFFEDEDF2.toInt()
     val MUTED = 0xFF8A8D98.toInt()
     val TRACK = 0xFF3A3D47.toInt()
+    val ACCENT_TEXT = 0xFFB9A6FF.toInt()
     const val MATCH = ViewGroup.LayoutParams.MATCH_PARENT
     const val WRAP = ViewGroup.LayoutParams.WRAP_CONTENT
 
@@ -47,6 +49,8 @@ object Ui {
         return Pair(minOf(dm.widthPixels, dm.heightPixels), maxOf(dm.widthPixels, dm.heightPixels))
     }
 
+    fun toastSafe(c: Context, msg: String) = android.widget.Toast.makeText(c, msg, android.widget.Toast.LENGTH_SHORT).show()
+
     fun dp(c: Context, v: Int) = (v * c.resources.displayMetrics.density).toInt()
 
     fun rounded(c: Context, color: Int, radius: Int = 999) = GradientDrawable().apply {
@@ -62,18 +66,39 @@ object Ui {
             if (bold) typeface = Typeface.DEFAULT_BOLD
         }
 
-    /** Section title. Tap it to fold or unfold the card right after it. */
-    fun section(c: Context, s: String) = text(c, s.uppercase() + "   ▾", 11f, MUTED, true).apply {
+    /** Section title. Inside a tabbed settings area it becomes one of the category chips. */
+    fun section(c: Context, s: String) = text(c, s.uppercase(), 11f, MUTED, true).apply {
         letterSpacing = 0.08f
         setPadding(dp(c, 4), dp(c, 18), 0, dp(c, 10))
-        val title = s.uppercase()
-        setOnClickListener {
-            val parent = parent as? android.view.ViewGroup ?: return@setOnClickListener
-            val next = parent.getChildAt(parent.indexOfChild(this) + 1) ?: return@setOnClickListener
-            val open = next.visibility != View.VISIBLE
-            next.visibility = if (open) View.VISIBLE else View.GONE
-            text = title + if (open) "   ▾" else "   ▸"
+        tag = "section"
+        contentDescription = s
+    }
+
+    /**
+     * Splits a long settings column into categories: one chip per section title, and only the chosen
+     * category is shown. [start] is the category to open first; [onTab] reports changes.
+     */
+    fun tabify(c: Context, col: LinearLayout, start: Int = 0, onTab: ((Int) -> Unit)? = null): LinearLayout {
+        val kids = (0 until col.childCount).map { col.getChildAt(it) }
+        col.removeAllViews()
+        val titles = mutableListOf<String>()
+        val pages = mutableListOf<LinearLayout>()
+        fun newPage(t: String) { titles += t; pages += LinearLayout(c).apply { orientation = LinearLayout.VERTICAL; setPadding(0, dp(c, 4), 0, dp(c, 16)) } }
+        for (v in kids) {
+            if (v.tag == "section") { newPage(v.contentDescription?.toString() ?: "More"); continue }
+            if (pages.isEmpty()) newPage("General")
+            pages.last().addView(v)
         }
+        val root = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL }
+        if (pages.isEmpty()) return root
+        val host = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL }
+        val scroll = ScrollView(c).apply { addView(host) }
+        val first = start.coerceIn(0, pages.size - 1)
+        fun show(i: Int) { host.removeAllViews(); host.addView(pages[i]); scroll.scrollTo(0, 0) }
+        if (pages.size > 1) root.addView(choice(c, titles, first) { show(it); onTab?.invoke(it) }.view)
+        root.addView(scroll, LinearLayout.LayoutParams(MATCH, 0, 1f))
+        show(first)
+        return root
     }
 
     /** Preview area height: small or large share of the screen. */
@@ -125,19 +150,17 @@ object Ui {
         c: Context, parent: LinearLayout, label: String, maxValue: Int, value: Int,
         show: (Int) -> String, onChange: (Int) -> Unit
     ): SeekBar {
-        val row = LinearLayout(c).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, dp(c, 7), 0, dp(c, 7))
-            minimumHeight = dp(c, 44)
-        }
-        val valueTv = text(c, show(value), 12f, MUTED).apply { gravity = Gravity.END }
+        val box = LinearLayout(c).apply { orientation = LinearLayout.VERTICAL; setPadding(0, dp(c, 6), 0, dp(c, 6)) }
+        val head = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        val valueTv = text(c, show(value), 14f, ACCENT_TEXT, true).apply { gravity = Gravity.END }
+        head.addView(text(c, label, 14f), LinearLayout.LayoutParams(0, WRAP, 1f))
+        head.addView(valueTv, LinearLayout.LayoutParams(WRAP, WRAP))
         val seek = SeekBar(c)
-        seek.setPadding(dp(c, 14), dp(c, 10), dp(c, 14), dp(c, 10))
+        seek.setPadding(dp(c, 16), dp(c, 12), dp(c, 16), dp(c, 12))
         seek.max = maxValue
         seek.progress = value
+        seek.thumb = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(ACCENT); setStroke(dp(c, 3), 0xFFFFFFFF.toInt()); setSize(dp(c, 26), dp(c, 26)) }
         seek.progressTintList = ColorStateList.valueOf(ACCENT)
-        seek.thumbTintList = ColorStateList.valueOf(ACCENT)
         seek.progressBackgroundTintList = ColorStateList.valueOf(TRACK)
         seek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(sb: SeekBar?, p: Int, fromUser: Boolean) {
@@ -147,10 +170,19 @@ object Ui {
             override fun onStartTrackingTouch(sb: SeekBar?) {}
             override fun onStopTrackingTouch(sb: SeekBar?) {}
         })
-        row.addView(text(c, label, 13f), LinearLayout.LayoutParams(dp(c, 92), WRAP))
-        row.addView(seek, LinearLayout.LayoutParams(0, WRAP, 1f))
-        row.addView(valueTv, LinearLayout.LayoutParams(dp(c, 42), WRAP))
-        parent.addView(row)
+        fun step(label: String, d: Int) = TextView(c).apply {
+            text = label; textSize = 20f; gravity = Gravity.CENTER; setTextColor(TEXT)
+            background = rounded(c, SURFACE2, 12)
+            setOnClickListener { seek.progress = (seek.progress + d).coerceIn(0, seek.max) }
+            setOnLongClickListener { seek.progress = (seek.progress + d * maxOf(1, seek.max / 10)).coerceIn(0, seek.max); true }
+        }
+        val line = LinearLayout(c).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        line.addView(step("−", -1), LinearLayout.LayoutParams(dp(c, 44), dp(c, 44)))
+        line.addView(seek, LinearLayout.LayoutParams(0, WRAP, 1f))
+        line.addView(step("+", 1), LinearLayout.LayoutParams(dp(c, 44), dp(c, 44)))
+        box.addView(head)
+        box.addView(line)
+        parent.addView(box)
         return seek
     }
 
@@ -188,8 +220,8 @@ object Ui {
         labels.forEachIndexed { i, l ->
             val tv = TextView(c).apply {
                 text = l
-                textSize = 13f
-                setPadding(dp(c, 14), dp(c, 7), dp(c, 14), dp(c, 7))
+                textSize = 14f
+                setPadding(dp(c, 18), dp(c, 11), dp(c, 18), dp(c, 11))
                 setOnClickListener { ch.select(i); onPick(i) }
             }
             chips += tv
@@ -225,7 +257,7 @@ object Ui {
                 onPick(col)
             }
             dots += v to col
-            row.addView(v, LinearLayout.LayoutParams(dp(c, 32), dp(c, 32)).apply { rightMargin = dp(c, 10) })
+            row.addView(v, LinearLayout.LayoutParams(dp(c, 42), dp(c, 42)).apply { rightMargin = dp(c, 12) })
         }
         paint()
         return HorizontalScrollView(c).apply {

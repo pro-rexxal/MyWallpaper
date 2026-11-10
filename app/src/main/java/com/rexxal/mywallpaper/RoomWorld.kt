@@ -63,6 +63,32 @@ class RoomWorld {
     /** How far (0..1 of the height) the whole room is moved up. */
     var shift = 0f
 
+    // ---------------- app icons (from the icon map) ----------------
+    var colliders: List<IconMap.Box> = emptyList()
+    /** Current home page position from the launcher (0 = first page, 1.5 = halfway to the third). */
+    var pageOffset = 0f
+    private var prevOffset = 0f
+    private var sizeN = .18f
+    private var aspect = .45f
+    private var lastBump = 0L
+    private class EB(val i: Int, val x0: Float, val x1: Float, val y0: Float, val y1: Float)
+
+    private fun effBoxes(): List<EB> {
+        val out = ArrayList<EB>(colliders.size)
+        colliders.forEachIndexed { i, c ->
+            val dx = if (c.page < 0) 0f else c.page - pageOffset
+            val x0 = c.x + dx; val x1 = x0 + c.w
+            if (x1 >= -.05f && x0 <= 1.05f) out += EB(i, x0, x1, c.y + shift, c.y + c.h + shift)
+        }
+        return out
+    }
+
+    private fun jumpTo(bx: EB, now: Long) {
+        val b = bot; val g = 4.2f; val dh = max(.02f, b.y - bx.y0) + .05f
+        val vy0 = -kotlin.math.sqrt(2 * g * dh); val t = -vy0 / g + kotlin.math.sqrt(2 * .05f / g); val tx = (bx.x0 + bx.x1) / 2
+        b.air = true; b.vy = vy0; b.vx = (tx - b.x) / t; b.jumping = true; b.standOn = -1; b.squashStart = now; b.facing = if (tx > b.x) 1f else -1f
+    }
+
     // ---------------- robot ----------------
     inner class Bot {
         var x = .5f; var y = GROUND; var vy = 0f; var vx = 0f; var vxs = 0f
@@ -73,6 +99,7 @@ class RoomWorld {
         var action = "idle"; var goal: String? = null; var actionUntil = 0L; var nextAction = System.currentTimeMillis() + 3000
         var speech: String? = null; var speechUntil = 0L
         var happyUntil = 0L; var waveUntil = 0L; var surpriseUntil = 0L; var squashStart = -1_000_000L
+        var standOn = -1; var jumping = false
         var petting = false; var spinStart = -1_000_000L; var nextThought = System.currentTimeMillis() + 20000; var sleepStart = 0L; var lean = 0f
     }
     val bot = Bot()
@@ -235,6 +262,14 @@ class RoomWorld {
         val dt = if (lastUpdate == 0L) 0f else (now - lastUpdate).coerceIn(0L, 100L) / 1000f
         lastUpdate = now
         val b = bot; val night = isNight(now); val wx = activeWeather()
+        val pageVel = if (dt > 0f) (pageOffset - prevOffset) / dt else 0f
+        prevOffset = pageOffset
+        if (abs(pageVel) > .8f && !b.sleeping && !b.carried) {
+            b.lean = (b.lean - pageVel * 6).coerceIn(-25f, 25f)
+            if (abs(pageVel) > 2.2f && now - lastBump > 1500) { lastBump = now; b.surpriseUntil = now + 900; say(listOf("Whoa! 😵‍💫", "Wheee!", "Slow down! 😆").random(), now, 1300) }
+        }
+        val boxes = if (room) effBoxes() else emptyList()
+        val halfW = sizeN * .42f; val botH = sizeN * aspect * 1.25f
         wind *= .25f.pow(dt)
         clouds.forEach { c -> c.x += (c.v * (if (wx == "Storm") 3 else 1) + wind * .08f) * dt; if (c.x > 1.3f) c.x = -.3f; if (c.x < -.3f) c.x = 1.3f }
         cars.forEach { c -> c.x += c.v * dt; if (c.x > 1.1f) c.x = -.1f; if (c.x < -.1f) c.x = 1.1f }
@@ -257,8 +292,13 @@ class RoomWorld {
         b.mood = (b.mood - dt * .002f).coerceIn(0f, 1f)
 
         if (b.carried) { } else if (b.air) {
-            b.vy += 4.2f * dt; b.y += b.vy * dt; b.x = (b.x + b.vx * dt).coerceIn(.06f, .94f); b.vx *= .3f.pow(dt)
-            if (b.y >= GROUND) { b.y = GROUND; val hard = b.vy > 1.4f; b.vy = 0f; b.vx = 0f; b.air = false; b.squashStart = now; b.tx = b.x; if (hard) { say(listOf("Oof! 😵", "Ouch!", "Nailed it! 😎").random(), now, 1500); burst(P_DUST, b.x, GROUND, 8) } }
+            val py = b.y
+            b.vy += 4.2f * dt; b.y += b.vy * dt; b.x = (b.x + b.vx * dt).coerceIn(.06f, .94f); if (!b.jumping) b.vx *= .3f.pow(dt)
+            if (b.vy > 0) boxes.firstOrNull { py <= it.y0 + .002f && b.y >= it.y0 && b.x >= it.x0 - .01f && b.x <= it.x1 + .01f }?.let { land ->
+                b.y = land.y0; b.vy = 0f; b.vx = 0f; b.air = false; b.jumping = false; b.standOn = land.i; b.squashStart = now; b.tx = b.x; b.vxs = 0f
+            }
+            if (b.air && b.y >= GROUND) {
+                b.jumping = false; b.standOn = -1 b.y = GROUND; val hard = b.vy > 1.4f; b.vy = 0f; b.vx = 0f; b.air = false; b.squashStart = now; b.tx = b.x; if (hard) { say(listOf("Oof! 😵", "Ouch!", "Nailed it! 😎").random(), now, 1500); burst(P_DUST, b.x, GROUND, 8) } }
         }
         ball?.let { bl ->
             bl.vy += 2.6f * dt; bl.x += bl.vx * dt; bl.y += bl.vy * dt
@@ -276,11 +316,29 @@ class RoomWorld {
         }
         if (b.sleeping || b.carried) { updateFace(now, dt, false); updateParts(dt); return }
 
+        // standing on an icon: fall if it slid away (page swipe) or he walked off the edge
+        if (b.standOn >= 0 && !b.air) {
+            val on = boxes.firstOrNull { it.i == b.standOn }
+            if (on == null || b.x < on.x0 - .01f || b.x > on.x1 + .01f) { b.air = true; b.vy = 0f; b.vx = b.vxs; b.standOn = -1; if (Random.nextBoolean()) say(listOf("Waaah! 😱", "Whoops!", "Uh oh…").random(), now, 1200) }
+            else b.y = on.y0
+        }
+        if (b.standOn >= 0 && b.goal != null && !b.air) { b.air = true; b.vy = -.6f; b.vx = kotlin.math.sign(b.tx - b.x) * .35f; b.standOn = -1 }
         val tired = b.energy < .15f && !charging
         if (!b.air) {
             val ddx = b.tx - b.x; val maxV = (if (ball != null) .34f else .2f) * (if (tired) .5f else 1f)
             val want = if (abs(ddx) > .004f) (ddx * 6).coerceIn(-maxV, maxV) else 0f
             b.vxs += (want - b.vxs) * min(1f, dt * 6); b.x += b.vxs * dt; if (abs(b.vxs) > .01f) b.facing = if (b.vxs > 0) 1f else -1f
+        }
+        // bump into icons in the way
+        if (!b.air) for (x in boxes) {
+            if (x.i == b.standOn) continue
+            if (x.y0 < b.y - .006f && x.y1 > b.y - botH && b.x + halfW > x.x0 && b.x - halfW < x.x1) {
+                val left = abs(b.x - x.x0) < abs(b.x - x.x1); val v = b.vxs
+                b.x = if (left) x.x0 - halfW else x.x1 + halfW; b.vxs = -v * .3f; b.tx = b.x
+                if (b.y - x.y0 < .3f && Random.nextBoolean() && abs(v) > .03f) { jumpTo(x, now); say("Hup!", now, 900) }
+                else if (now - lastBump > 1200 && abs(v) > .03f) { lastBump = now; b.squashStart = now; say(listOf("Oof! 🤕", "Bonk!", "Hey, an icon!").random(), now, 1200) }
+                break
+            }
         }
         b.lean += ((b.vxs / .2f) * 6 - b.lean) * min(1f, dt * 5)
         val arrived = !b.air && abs(b.tx - b.x) < .006f && abs(b.vxs) < .03f
@@ -313,6 +371,11 @@ class RoomWorld {
             when {
                 !room -> { if (r < .6f) b.tx = (b.x + (Random.nextFloat() - .5f) * .5f).coerceIn(.18f, .82f) else if (r < .8f) setAction("dance", now, 3500) else b.waveUntil = now + 1400 }
                 tired -> goTo("pod", now, "So tired… 🪫")
+                b.standOn >= 0 && r < .45f -> { b.air = true; b.vy = -.7f; b.vx = (if (Random.nextBoolean()) -1 else 1) * .3f; b.standOn = -1; if (Random.nextFloat() < .3f) say("Wheee!", now, 1000) }
+                boxes.isNotEmpty() && r < .7f && boxes.any { it.i != b.standOn && it.y0 < b.y - .01f && b.y - it.y0 < .3f && abs((it.x0 + it.x1) / 2 - b.x) < .4f } -> {
+                    val t = boxes.filter { it.i != b.standOn && it.y0 < b.y - .01f && b.y - it.y0 < .3f && abs((it.x0 + it.x1) / 2 - b.x) < .4f }.random()
+                    jumpTo(t, now); if (Random.nextFloat() < .4f) say(listOf("Climbing! 🧗", "Up we go!", "Nice seat up there").random(), now, 1500)
+                }
                 (h >= 23 || h < 6) && r < .5f -> goTo("pod", now, "Bedtime… 🌙")
                 h >= 6 && h < 10 && r < .35f -> goTo("drink", now, "Morning drink! ☀️")
                 night && r < .3f -> goTo("telescope", now)
@@ -664,9 +727,10 @@ class RoomWorld {
         val sq = (now - b.squashStart) / 350f; val squash = if (sq in 0f..1f) sin(sq * PI.toFloat()) * .18f else 0f; val breathe = sin(tm / 700f) * .015f
         val bob = when { b.sleeping -> 0f; dancing -> abs(sin(tm / 180f)) * -s * .12f; walking -> abs(sin(tm / 140f)) * -s * .04f; else -> 0f }
         val inPod = b.sleeping && abs(b.x - SPOT.getValue("pod")) < .03f
-        val footY = b.y * h + bob - (if (inPod) s * .04f else 0f); val cx = b.x * w
+        val sitting = b.standOn >= 0 && !b.air && !walking && !b.sleeping && b.action != "dance"
+        val footY = b.y * h + bob - (if (inPod) s * .04f else 0f) + (if (sitting) s * .2f else 0f); val cx = b.x * w
         val eye = if (tired) 0xFFFFB703.toInt() else if (charging) mix(n1, 0xFF06D6A0.toInt(), .5f) else n1
-        val lift = ((GROUND - b.y) * 4).coerceIn(0f, 1f); p.color = a(Color.BLACK, .35f * (1 - lift * .7f)); oval(c, cx, GROUND * h + s * .02f, s * .42f * (1 - lift * .4f), s * .07f)
+        val lift = if (b.standOn >= 0) 1f else ((GROUND - b.y) * 4).coerceIn(0f, 1f); p.color = a(Color.BLACK, .35f * (1 - lift * .7f)); oval(c, cx, GROUND * h + s * .02f, s * .42f * (1 - lift * .4f), s * .07f)
         c.save(); c.translate(cx, footY)
         var tilt = when { walking -> b.lean + sin(tm / 140f) * 2; dancing -> sin(tm / 180f) * 14; b.carried -> sin(tm / 150f) * 12; tired -> -4f; else -> 0f }
         val spin = (now - b.spinStart) / 700f; if (spin in 0f..1f) tilt += easeInOut(spin) * 360 * b.facing
@@ -678,6 +742,7 @@ class RoomWorld {
             if (walking) { val ph = sin(tm / 140f + (if (side > 0) PI.toFloat() else 0f)); lx += ph * s * .08f; ly = -max(0f, ph) * s * .06f }
             if (b.carried || b.air) { lx += sin(tm / 90f + side) * s * .05f; ly = -s * .02f }
             if (b.sleeping) { lx = side * s * .22f; ly = -s * .02f }
+            if (sitting) { lx = side * s * .17f; ly = s * .14f + sin(tm / 380f + side * 1.7f) * s * .04f }
             c.drawLine(side * s * .14f, hipY, lx, ly - s * .03f, sp); p.color = shade; oval(c, lx + side * s * .02f, ly - s * .02f, s * .09f, s * .045f)
         }
         val bodyTop = hipY - s * .46f
@@ -746,6 +811,7 @@ class RoomWorld {
 
     /** Draws the room (when [room]) and returns a function that draws the robot, drone and particles on top. */
     fun draw(c: Canvas, w: Float, h: Float, now: Long, cfg: LiveConfig, room: Boolean): () -> Unit {
+        sizeN = cfg.robotSize / 100f; aspect = w / h
         update(now, cfg.sleepSec * 1000L, room)
         var dark = 0f
         val off = if (room) shift * h else 0f

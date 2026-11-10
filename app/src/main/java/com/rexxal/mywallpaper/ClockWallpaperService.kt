@@ -90,6 +90,11 @@ class ClockWallpaperService : WallpaperService() {
             super.onSurfaceDestroyed(holder)
         }
 
+        override fun onOffsetsChanged(xOffset: Float, yOffset: Float, xStep: Float, yStep: Float, xPixels: Int, yPixels: Int) {
+            // the launcher tells us how far you've swiped between home pages
+            world.pageOffset = if (xStep > 0f && xStep < 1f) xOffset / xStep else 0f
+        }
+
         override fun onTouchEvent(e: MotionEvent) {
             if (touch.onTouch(e, e.x, e.y, sw.toFloat(), sh.toFloat(), cfg) && visible) drawFrame()
         }
@@ -102,6 +107,8 @@ class ClockWallpaperService : WallpaperService() {
 
         private fun reload() {
             cfg = LiveConfig.load(prefs)
+            val (w, h) = Ui.screenSize(ctx)
+            world.colliders = IconMap.load(prefs).boxes(w.toFloat() / h)
             val ver = prefs.getLong("live_bg_ver", 0L)
             if (cfg.bgMode == 0 && (photo == null || ver != photoVer)) {
                 photoVer = ver
