@@ -6,7 +6,6 @@ import android.graphics.Canvas
 import android.os.Handler
 import android.os.Looper
 import android.service.wallpaper.WallpaperService
-import android.view.Choreographer
 import android.view.MotionEvent
 import android.view.SurfaceHolder
 
@@ -31,10 +30,7 @@ class ClockWallpaperService : WallpaperService() {
         private var hardware = true
         private var lastFrameNs = 0L
         private val drawRunnable = Runnable { drawFrame() }
-        private val frameCallback = Choreographer.FrameCallback { ns ->
-            // the room runs at ~30fps to stay smooth on older phones; other styles at full rate
-            if (cfg.bgMode == 4 && ns - lastFrameNs < 30_000_000L) scheduleFrame() else { lastFrameNs = ns; drawFrame() }
-        }
+
 
         override fun onCreate(surfaceHolder: SurfaceHolder) {
             super.onCreate(surfaceHolder)
@@ -53,10 +49,9 @@ class ClockWallpaperService : WallpaperService() {
 
         private fun stopFrames() {
             handler.removeCallbacks(drawRunnable)
-            Choreographer.getInstance().removeFrameCallback(frameCallback)
         }
 
-        private fun scheduleFrame() { Choreographer.getInstance().postFrameCallback(frameCallback) }
+
 
         override fun onVisibilityChanged(v: Boolean) {
             visible = v
@@ -116,7 +111,10 @@ class ClockWallpaperService : WallpaperService() {
             }
             if (visible) {
                 val delay = LiveRenderer.nextDelay(cfg, System.currentTimeMillis())
-                if (delay <= 40L) scheduleFrame() else handler.postDelayed(drawRunnable, delay)
+                // steady timer: ~30fps for the room, ~60fps otherwise, minus the time this frame took
+                val target = if (cfg.bgMode == 4) 33L else 16L
+                val spent = System.currentTimeMillis() - now
+                handler.postDelayed(drawRunnable, if (delay <= 40L) (target - spent).coerceAtLeast(4L) else delay)
             }
         }
     }

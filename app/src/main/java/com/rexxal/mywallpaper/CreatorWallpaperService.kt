@@ -9,7 +9,6 @@ import android.content.SharedPreferences
 import android.graphics.Canvas
 import android.os.Handler
 import android.os.Looper
-import android.view.Choreographer
 import android.service.wallpaper.WallpaperService
 import android.view.SurfaceHolder
 
@@ -30,7 +29,6 @@ class CreatorWallpaperService : WallpaperService() {
         private val cache = CreatorRenderer.BgCache()
         private var visible = false
         private val drawRunnable = Runnable { drawFrame() }
-        private val frameCallback = Choreographer.FrameCallback { drawFrame() }
         private var pendingStage = -1
         private var hardware = true
         private val keyguard = ctx.getSystemService(KeyguardManager::class.java)
@@ -85,7 +83,6 @@ class CreatorWallpaperService : WallpaperService() {
 
         private fun stopFrames() {
             handler.removeCallbacks(drawRunnable)
-            Choreographer.getInstance().removeFrameCallback(frameCallback)
         }
 
         override fun onVisibilityChanged(v: Boolean) {
@@ -140,7 +137,7 @@ class CreatorWallpaperService : WallpaperService() {
                 if (canvas != null) try { holder.unlockCanvasAndPost(canvas) } catch (e: Exception) { }
             }
             if (visible) {
-                if (CreatorRenderer.needsFrames(design, state, now)) Choreographer.getInstance().postFrameCallback(frameCallback)
+                if (CreatorRenderer.needsFrames(design, state, now)) handler.postDelayed(drawRunnable, (16L - (System.currentTimeMillis() - now)).coerceAtLeast(4L))
                 else handler.postDelayed(drawRunnable, CreatorRenderer.nextDelay(design, state, now))
             }
         }
