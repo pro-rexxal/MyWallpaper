@@ -215,6 +215,11 @@ class CreatorPage(private val a: MainActivity) {
         colors(k, "Color 2 (gradient)", bg.c2) { bg.c2 = it }
         slider(k, "Angle", 0, 360, bg.angle, { "$it°" }) { bg.angle = it }
 
+        val fb = card("Lock screen help")
+        fb.addView(Ui.lockHelpCard(a))
+        fb.addView(Ui.text(c, "If your phone still shows its own picture on the lock screen, use a still image of this design there instead:", 13f, Ui.MUTED).apply { setPadding(0, dp(12), 0, 0) })
+        fb.addView(Ui.button(c, "Set still image on lock screen", false) { stillLock() }, LinearLayout.LayoutParams(Ui.MATCH, Ui.WRAP).apply { topMargin = dp(8) })
+
         val t = card("Lock → Home effect")
         t.addView(Ui.label(c, "How the background changes when you unlock"))
         slider(t, "Dim on lock", 0, 90, bg.dimLock, { "$it%" }) { bg.dimLock = it }
@@ -376,6 +381,21 @@ class CreatorPage(private val a: MainActivity) {
         } catch (e: Throwable) {
             a.toast("That file isn't a font (.ttf or .otf)")
         }
+    }
+
+    /** Fallback for lock screens that don't show live wallpapers: a still picture of the lock-screen design. */
+    private fun stillLock() {
+        a.toast("Making the picture…")
+        Thread {
+            try {
+                val bmp = Bitmap.createBitmap(a.screenW, a.screenH, Bitmap.Config.ARGB_8888)
+                val cache = CreatorRenderer.BgCache(); CreatorRenderer.loadBg(c, cache, p.getLong("creator_bg_ver", 0L), a.screenW)
+                val st = CreatorState(); st.go(CreatorState.LOCK, design, 0L, instant = true)
+                CreatorRenderer.draw(android.graphics.Canvas(bmp), a.screenW.toFloat(), a.screenH.toFloat(), System.currentTimeMillis(), design, st, cache, null)
+                WallpaperManager.getInstance(c).setBitmap(bmp, null, true, WallpaperManager.FLAG_LOCK)
+                a.runOnUiThread { a.toast("Lock screen picture set ✓ (the clock won't tick on a still picture)") }
+            } catch (e: Throwable) { a.runOnUiThread { a.toast("Failed: ${e.message}") } }
+        }.start()
     }
 
     private fun setLive() {

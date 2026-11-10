@@ -120,8 +120,20 @@ class CreatorWallpaperService : WallpaperService() {
             if (visible) drawFrame()
         }
 
+        /** Fix the stage ourselves if a screen/unlock signal was late or missing (common on MIUI). */
+        private fun checkLock(now: Long) {
+            if (!visible || pendingStage >= 0) return
+            val locked = isLocked()
+            when {
+                state.stage == CreatorState.LOCK && !locked -> state.go(CreatorState.HOME, design, now)
+                state.stage == CreatorState.HOME && locked -> state.go(CreatorState.LOCK, design, now)
+                state.stage == CreatorState.OFF -> state.go(if (locked) CreatorState.LOCK else CreatorState.HOME, design, now)
+            }
+        }
+
         private fun drawFrame() {
             stopFrames()
+            checkLock(System.currentTimeMillis())
             val holder = surfaceHolder
             var canvas: Canvas? = null
             val now = System.currentTimeMillis()
@@ -138,7 +150,7 @@ class CreatorWallpaperService : WallpaperService() {
             }
             if (visible) {
                 if (CreatorRenderer.needsFrames(design, state, now)) handler.postDelayed(drawRunnable, (16L - (System.currentTimeMillis() - now)).coerceAtLeast(4L))
-                else handler.postDelayed(drawRunnable, CreatorRenderer.nextDelay(design, state, now))
+                else handler.postDelayed(drawRunnable, if (state.stage == CreatorState.LOCK) minOf(400L, CreatorRenderer.nextDelay(design, state, now)) else CreatorRenderer.nextDelay(design, state, now))
             }
         }
     }

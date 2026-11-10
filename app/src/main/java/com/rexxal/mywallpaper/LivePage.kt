@@ -138,6 +138,10 @@ class LivePage(private val a: MainActivity) {
         preview.touch.onLightsChanged = { on -> cfg.lightsOn = on; lights.isChecked = on }
         col.addView(room)
 
+        // Lock screen help
+        col.addView(Ui.section(c, "Lock screen help"))
+        col.addView(Ui.lockHelpCard(a))
+
         // Charging
         col.addView(Ui.section(c, "Charging"))
         val pw = Ui.card(c)

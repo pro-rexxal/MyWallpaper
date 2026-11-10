@@ -28,6 +28,7 @@ class MainActivity : Activity() {
     private lateinit var auto: AutoPage
     private lateinit var live: LivePage
     lateinit var creator: CreatorPage
+    private lateinit var jarvis: JarvisPage
     private lateinit var pages: List<View>
     private val tabs = mutableListOf<TextView>()
     private lateinit var subtitle: TextView
@@ -36,7 +37,8 @@ class MainActivity : Activity() {
         "Photo · crop, filters and effects, then set",
         "Auto · change wallpaper on a schedule",
         "Robot · live wallpaper with your robot buddy",
-        "Creator · design your own lock & home screen"
+        "Creator · design your own lock & home screen",
+        "Jarvis · catches whoever opens your lock screen"
     )
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -74,7 +76,8 @@ class MainActivity : Activity() {
         auto = AutoPage(this)
         live = LivePage(this)
         creator = CreatorPage(this)
-        pages = listOf(packs.view, edit.view, auto.view, live.view, creator.view)
+        jarvis = JarvisPage(this)
+        pages = listOf(packs.view, edit.view, auto.view, live.view, creator.view, jarvis.view)
         val content = FrameLayout(this).apply { setPadding(dp(16), 0, dp(16), dp(10)) }
         pages.forEach { content.addView(it, FrameLayout.LayoutParams(Ui.MATCH, Ui.MATCH)) }
         root.addView(content, LinearLayout.LayoutParams(Ui.MATCH, 0, 1f))
@@ -85,11 +88,11 @@ class MainActivity : Activity() {
             setBackgroundColor(Ui.SURFACE)
             setPadding(dp(12), dp(8), dp(12), dp(8))
         }
-        listOf("✨\nWallpapers", "🎨\nPhoto", "🔄\nAuto", "🤖\nRobot", "🧩\nCreator").forEachIndexed { i, label ->
+        listOf("✨\nWallpapers", "🎨\nPhoto", "🔄\nAuto", "🤖\nRobot", "🧩\nCreator", "🕵\nJarvis").forEachIndexed { i, label ->
             val tv = TextView(this).apply {
                 text = label
                 gravity = Gravity.CENTER
-                textSize = 12f
+                textSize = 11f
                 typeface = Typeface.DEFAULT_BOLD
                 setPadding(0, dp(6), 0, dp(6))
                 setOnClickListener { showTab(i) }
@@ -115,6 +118,7 @@ class MainActivity : Activity() {
         subtitle.text = subtitles[i]
         if (i == 3) live.refresh()
         if (i == 4) creator.refresh()
+        if (i == 5) jarvis.refresh()
     }
 
     fun toast(msg: String) = Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
@@ -156,6 +160,16 @@ class MainActivity : Activity() {
     fun openInEditor(bmp: android.graphics.Bitmap) {
         edit.setBitmap(bmp)
         showTab(1)
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        jarvis.refresh()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (::jarvis.isInitialized) jarvis.refresh()
     }
 
     @Deprecated("Deprecated in Java")

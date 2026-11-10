@@ -49,6 +49,36 @@ object Ui {
         return Pair(minOf(dm.widthPixels, dm.heightPixels), maxOf(dm.widthPixels, dm.heightPixels))
     }
 
+    fun openBatterySettings(a: android.app.Activity) {
+        try { a.startActivity(android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS).setData(android.net.Uri.parse("package:" + a.packageName))) } catch (e: Exception) { }
+        toastSafe(a, "Battery → No restrictions / Allow background activity")
+    }
+
+    /** Opens the phone maker's Autostart screen (Xiaomi, Realme/OPPO, Vivo…) or app settings. */
+    fun openAutostart(a: android.app.Activity) {
+        val comps = listOf(
+            "com.miui.securitycenter" to "com.miui.permcenter.autostart.AutoStartManagementActivity",
+            "com.coloros.safecenter" to "com.coloros.safecenter.permission.startup.StartupAppListActivity",
+            "com.coloros.safecenter" to "com.coloros.safecenter.startupapp.StartupAppListActivity",
+            "com.oplus.safecenter" to "com.oplus.safecenter.permission.startup.StartupAppListActivity",
+            "com.vivo.permissionmanager" to "com.vivo.permissionmanager.activity.BgStartUpManagerActivity")
+        for ((pkg, cls) in comps) {
+            try { a.startActivity(android.content.Intent().setComponent(android.content.ComponentName(pkg, cls))); toastSafe(a, "Turn on MyWallpaper"); return } catch (e: Exception) { }
+        }
+        openBatterySettings(a)
+    }
+
+    /** "Lock screen not working?" help with one-tap fixes. */
+    fun lockHelpCard(a: android.app.Activity): LinearLayout {
+        val k = card(a)
+        k.addView(text(a, "Lock screen not working sometimes?", 15f, TEXT, true))
+        k.addView(text(a, "Xiaomi/Redmi (MIUI) and Realme save battery by pausing wallpapers, and some show their own picture on the lock screen. Fix it once:", 13f, MUTED).apply { setPadding(0, dp(a, 4), 0, 0) })
+        k.addView(text(a, "1. Battery → No restrictions\n2. Autostart → on\n3. When applying a live wallpaper, choose \"Home & lock screen\"\n4. MIUI: turn off Lock screen \"Glance\" / wallpaper carousel", 13f, TEXT).apply { setPadding(0, dp(a, 8), 0, 0) })
+        k.addView(button(a, "Battery settings", false) { openBatterySettings(a) }, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(a, 10) })
+        k.addView(button(a, "Autostart settings", false) { openAutostart(a) }, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(a, 8) })
+        return k
+    }
+
     fun toastSafe(c: Context, msg: String) = android.widget.Toast.makeText(c, msg, android.widget.Toast.LENGTH_SHORT).show()
 
     fun dp(c: Context, v: Int) = (v * c.resources.displayMetrics.density).toInt()

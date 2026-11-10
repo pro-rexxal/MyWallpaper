@@ -2,4 +2,5 @@
 <resources>
     <string name="live_desc">Your custom clock, date and animated background</string>
     <string name="creator_desc">Your own design with animated time, date and text</string>
+    <string name="jarvis_desc">Jarvis the hacker robot, watching your lock screen</string>
 </resources>
