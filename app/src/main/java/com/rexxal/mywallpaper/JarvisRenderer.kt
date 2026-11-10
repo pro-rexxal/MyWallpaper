@@ -72,7 +72,11 @@ class JarvisRenderer {
     private var evKind: String? = null; private var evStart = 0L; private var evNext = 0L; private var evY = .2f; private var evDir = 1
 
     /** Someone woke the locked phone: lean in and watch the keypad. */
-    fun attention(now: Long, on: Boolean) { if (on) { attentionAt = now; attentionUntil = now + 9000 } else attentionUntil = 0L }
+    fun attention(now: Long, on: Boolean, keep: Boolean = false) {
+        if (!on) { attentionUntil = 0L; return }
+        if (!keep || now > attentionUntil) attentionAt = now     // a new wake-up restarts the "someone's unlocking" line
+        attentionUntil = now + if (keep) 1500 else 9000
+    }
 
     /** A tap on the home screen (normalised 0..1). */
     fun tap(nx: Float, ny: Float, now: Long, w: Float, h: Float) {

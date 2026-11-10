@@ -43,6 +43,7 @@ class JarvisWallpaperService : WallpaperService() {
             }
         }
 
+        private var lastLockCheck = 0L; private var wasLocked = false
         private var downX = 0f; private var downY = 0f; private var downT = 0L
         override fun onTouchEvent(e: android.view.MotionEvent) {
             when (e.actionMasked) {
@@ -86,6 +87,13 @@ class JarvisWallpaperService : WallpaperService() {
         private fun drawFrame() {
             handler.removeCallbacks(drawRunnable)
             val now = System.currentTimeMillis()
+            // MIUI doesn't always deliver SCREEN_ON to wallpapers: poll the lock state instead
+            if (now - lastLockCheck > 500) {
+                lastLockCheck = now
+                val locked = try { ctx.getSystemService(android.app.KeyguardManager::class.java).isKeyguardLocked } catch (e: Exception) { false }
+                if (locked) jr.attention(now, true, keep = true) else if (wasLocked) jr.attention(now, false)
+                wasLocked = locked
+            }
             var c: Canvas? = null
             try {
                 c = if (hardware) { try { surfaceHolder.lockHardwareCanvas() } catch (e: Exception) { hardware = false; surfaceHolder.lockCanvas() } } else surfaceHolder.lockCanvas()
