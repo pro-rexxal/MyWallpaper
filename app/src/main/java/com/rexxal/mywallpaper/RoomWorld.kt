@@ -476,10 +476,9 @@ class RoomWorld {
         val n1 = neon[0]; val n2 = neon[1]; val hr = hour(now); val night = isNight(now); val tm = AnimClock.ms(now)
         vgrad(c, 0f, 0f, w, h * BACK, 0xFF151827.toInt(), 0xFF1D2134.toInt())
         sp.color = a(Color.WHITE, .035f); sp.strokeWidth = 1f; for (k in 1 until 6) c.drawLine(w * k / 6, h * .05f, w * k / 6, h * BACK, sp)
-        p.color = 0xFF0E1019.toInt(); c.drawRect(0f, 0f, w, h * .045f, p)
+        // soft light from the ceiling, no hard bar under the status bar
         val strip = if (music) mix(n1, n2, (sin(tm / 250f) + 1) / 2) else n1
-        p.color = a(strip, if (lightsOn) .95f else .5f); c.drawRect(w * .04f, h * .043f, w * .96f, h * .047f, p)
-        vgrad(c, 0f, h * .045f, w, h * .2f, a(strip, if (lightsOn) .22f else .1f), a(strip, 0f))
+        vgrad(c, 0f, 0f, w, h * .18f, a(strip, if (lightsOn) .2f else .08f), a(strip, 0f))
         val X = w * WX0; val Y = h * WY0; val W = w * (WX1 - WX0); val H = h * (WY1 - WY0)
         p.color = 0xFF0B0D16.toInt(); rr(c, X - w * .02f, Y - w * .02f, X + W + w * .02f, Y + H + w * .02f, w * .04f)
         c.save(); path.reset(); r.set(X, Y, X + W, Y + H); path.addRoundRect(r, w * .025f, w * .025f, Path.Direction.CW); c.clipPath(path)
